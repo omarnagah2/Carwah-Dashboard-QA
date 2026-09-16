@@ -21,6 +21,15 @@ test.describe('booking lifecycle', () => {
   /** After the handover, extra services are charged on top of the extended rental. */
   const extras = booking.extraServices.reduce((sum, service) => sum + chargeFor(service, booking.days + 1), 0);
   const withExtras = priceFor(booking.days + 1, extras);
+  /** Change Duration then adds one more day, and the per-day services follow. */
+  const lengthenedDays = booking.days + 2;
+  const lengthened = {
+    days: lengthenedDays,
+    ...priceFor(
+      lengthenedDays,
+      booking.extraServices.reduce((sum, service) => sum + chargeFor(service, lengthenedDays), 0),
+    ),
+  };
   const editNote = 'Extended one day by the Carwah Dashboard automated test';
   let bookingId: string;
 
@@ -215,16 +224,41 @@ test.describe('booking lifecycle', () => {
     expect(await details.aboutPrice('Due Amount')).toBe(withExtras.due);
   });
 
+  test('changing its duration', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const pickup = await details.detail('Pickup date and time');
+    const currentReturn = new Date((await details.detail('Return date and time')).slice(0, 10) + 'T00:00:00');
+    const newReturn = addDays(currentReturn, 1);
+
+    await details.changeDropoff(currentReturn, newReturn);
+
+    await details.open(bookingId);
+    await test.step('the booking runs a day longer', async () => {
+      expect(await details.detail('Pickup date and time')).toBe(pickup);
+      expect((await details.detail('Return date and time')).slice(0, 10)).toBe(isoDate(newReturn));
+      expect(await details.detail('Total rental days')).toBe(String(lengthened.days));
+    });
+    await test.step('and is repriced, per-day services included', async () => {
+      for (const service of booking.extraServices) {
+        expect(await details.aboutPrice(service.name), service.name).toBe(chargeFor(service, lengthened.days));
+      }
+      expect(Number(await details.detail('Price before tax'))).toBe(lengthened.subtotal);
+      expect(Number(await details.detail('Tax'))).toBe(lengthened.vat);
+      expect(Number(await details.detail('Grand Total'))).toBe(lengthened.due);
+    });
+  });
+
   test('invoicing it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
 
-    await details.changeStatus('Invoiced', { grandTotal: withExtras.due });
+    await details.changeStatus('Invoiced', { grandTotal: lengthened.due });
 
     await details.open(bookingId);
     expect(await details.detail('Booking Status')).toBe('Invoiced');
     expect(await details.detail('Booking SubStatus')).toBe('Pending review');
-    expect(Number(await details.detail('Grand Total'))).toBe(withExtras.due);
+    expect(Number(await details.detail('Grand Total'))).toBe(lengthened.due);
   });
 
   test('closing it', async ({ page }) => {

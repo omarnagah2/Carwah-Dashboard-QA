@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { isOperation } from '../utils/graphql';
 import { BasePage } from './base.page';
+import { pickDate } from './date-time-picker.component';
 
 export type BookingStatus = 'Confirmed' | 'Car Received' | 'Invoiced' | 'Closed';
 
@@ -27,6 +28,8 @@ export class BookingDetailsPage extends BasePage {
   readonly noteDialog = this.byRole('dialog').filter({ has: this.page.getByRole('button', { name: 'Add', exact: true }) });
   readonly extraServicesButton = this.byRole('button', { name: 'Update Extra Service' });
   readonly extraServicesDialog = this.byRole('dialog').filter({ has: this.page.getByRole('button', { name: 'Edit', exact: true }) });
+  readonly changeDurationButton = this.byRole('button', { name: 'Change Duration' });
+  readonly durationDialog = this.byRole('dialog').filter({ hasText: 'Drop off Date/Time' });
 
   constructor(page: Page) {
     super(page);
@@ -181,6 +184,24 @@ export class BookingDetailsPage extends BasePage {
     return this.extraServicesDialog.getByRole('checkbox', {
       name: new RegExp(`^${escapeRegExp(service)} (\\d+(\\.\\d+)? SAR / (Rent|Day)|Free)$`),
     });
+  }
+
+  /**
+   * Moves the drop-off from `current` to `date` through Change Duration (the
+   * pickup stays) and waits for the API to accept it. The dialog's dates are
+   * in Arabic; there is no confirmation step.
+   */
+  async changeDropoff(current: Date, date: Date): Promise<void> {
+    await this.changeDurationButton.click();
+    const dropoff = this.durationDialog.getByText('Drop off Date/Time', { exact: true }).locator('xpath=..').getByRole('textbox');
+    await pickDate(this.page, dropoff, current, date);
+    const response = this.page.waitForResponse((r) => isOperation(r, 'EditRentalDuration'));
+    await this.durationDialog.getByRole('button', { name: 'Change', exact: true }).click();
+    const body = await (await response).json();
+    const result = body.data?.editRentalDuration;
+    expect(body.errors ?? result?.errors ?? [], 'EditRentalDuration errors').toEqual([]);
+    expect(result?.status, `EditRentalDuration answered ${JSON.stringify(body)}`).toBe('success');
+    await expect(this.durationDialog).toBeHidden();
   }
 
   /**

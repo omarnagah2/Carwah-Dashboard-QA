@@ -16,7 +16,8 @@ tests/
                     booking-lifecycle (writes: one booking per run, closed at the end)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                bookings (list), booking-filters (panel), booking-details,
-               booking-form (shared price summary), add-booking, edit-booking
+               booking-form (shared price summary), add-booking, edit-booking,
+               date-time-picker (the MUI picker behind every booking date field)
 src/utils/     graphql.ts (isOperation)
 src/config/    test-data.ts (all data, env-overridable), auth.ts
 src/reporters/ environment-classifier (copied from Carwah UI)
@@ -90,7 +91,7 @@ npm run typecheck
     Change Duration, Update Price, Add Extra Fees, Print, Timeline, Extension
     Requests, Assign To;
   - Closed: the same without Change Status.
-- Untested so far: Change Duration, Update Price, Add
+- Untested so far: Update Price, Add
   Extra Fees, Extension Requests, Recall Gateway, Print.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
@@ -102,7 +103,8 @@ npm run typecheck
   `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
   cash, the form's default three days from now (all in `testData.newBooking`),
   assigns it to customer care, extends it by a day, confirms it, hands the
-  car over, adds a note and extra services, invoices and closes it. The
+  car over, adds a note and extra services, lengthens it by another day,
+  invoices and closes it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -157,7 +159,8 @@ npm run typecheck
   date, days and totals; the **Timeline**'s newest entry lists old and new
   data (`dropoff Date : …`, `notes : …`, `total_booking_price : …`) —
   `latestChange()` reads it. The drop-off time loses its seconds on save.
-- The date fields are read-only and open a **MUI date-time picker**
+- The date fields are read-only and open a **MUI date-time picker** —
+  `pickDate` in `date-time-picker.component.ts`, shared with Change Duration
   (`.MuiPickersModal-dialogRoot`; `getByRole('dialog')` finds two nodes). Its
   grid pads with neighbouring months' days, classed `hidden`. While it is
   open the page behind is aria-hidden, so read the field before opening it.
@@ -204,6 +207,18 @@ npm run typecheck
   whole page (4 of 4 tries; 0 of 4 after waiting).
 - `aboutPrice(label)` matches a line that is just label + amount, so `Total`
   does not pick up `Total days (4)`.
+
+### Changing duration (`BookingDetailsPage.changeDropoff`)
+
+- **Change Duration** (from Car Received on) opens a dialog with the Pickup and
+  Drop off date fields — in Arabic here too — and **Change**. The spec moves the
+  drop-off a day later. Change sends `EditRentalDuration { pickUpDate,
+  pickUpTime, dropOffDate, dropOffTime, rentalId }`, with no confirmation, and
+  toasts "Rent has been edited successfully".
+- The booking is repriced: days, Price before tax, Tax and Grand Total follow,
+  and **per-day extra services are recharged for the new length** (5 days:
+  495 + GPS 5 + child seat 25 = 525, VAT 78.75, 603.75). Invoicing then uses
+  that Grand Total.
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 
@@ -301,6 +316,13 @@ moment one starts passing — then drop the mark.
 - **The Agency Name filter is ignored.** The choice is written into the page URL
   (`agency: [{ id: "199", ... }]`) but not into `GetBookingsQuery`'s variables,
   so the total is unchanged. The field is also shown twice.
+
+## Open questions for the product
+
+- **Closed, invoiced bookings can still be repriced.** Update Extra Service
+  and Change Duration are offered and accepted on a closed booking: 21606 went
+  from 455.4 to 484.15 after closing, 21608 from 484.15 to 603.75. Whether
+  that is intended is for the product to say; no spec relies on it.
 
 ## Working style
 
