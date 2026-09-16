@@ -1,0 +1,142 @@
+# Carwah Dashboard — Playwright automation
+
+E2E suite for the **Carwah Dashboard** (the admin side) at
+**http://pre_dashboard.carwah.co:8880** (HTTP, English by default). Playwright +
+TypeScript, Page Object Model. Sister project of `../Carwah UI`, which tests the
+customer website — follow its conventions (see its CLAUDE.md) unless the
+dashboard gives a reason not to.
+
+## Layout
+
+```
+tests/
+├── auth.setup.ts   # admin sign-in, once per run; every spec reuses it
+├── smoke/          dashboard-reachable
+└── bookings/       bookings-list, bookings-filters (read-only)
+src/pages/     page objects (BasePage copied from Carwah UI), signin,
+               bookings (list), booking-filters (panel), booking-details
+src/config/    test-data.ts (all data, env-overridable), auth.ts
+src/reporters/ environment-classifier (copied from Carwah UI)
+```
+
+## Commands
+
+```bash
+npx playwright test
+npm run typecheck
+```
+
+## Environment facts
+
+- **Credentials come from `.env`** (git-ignored; template in `.env.example`),
+  loaded by `process.loadEnvFile()` in the config. Never put them in code or docs.
+- **`#` starts a comment in `.env`** — the admin password contains one, so the
+  value must be quoted. Unquoted, the password is silently truncated and the
+  sign-in page answers `please enter valid credentials`.
+- **Sign-in is email + password**, no OTP: `#email`, `#password`, the `Login`
+  button. A signed-in admin lands on `/cw/dashboard/Statistics`; a signed-out one
+  is redirected to `/signin?from=…`. There is also a separate
+  "Login as Agency?" flow (`/signin#agency`), not covered yet.
+- **One live session per account.** Signing in while the account is signed in
+  elsewhere opens a dialog ("…will automatically log out your current session on
+  the other device"), and anyone signing in later silently invalidates *our*
+  session — the stored one is then redirected to `/signin#Auth` although its
+  `expiresAt` is still in the future. So setup reuses the stored session while
+  the server accepts it (`FORCE_LOGIN=1` skips that), and on the dialog it
+  **stops** rather than logging someone out, unless
+  `DASHBOARD_TAKE_OVER_SESSION=1`. `super5@carwah.co` is shared, which is why
+  this bites: the suite needs an admin account nobody else uses.
+- **The session is in localStorage** (`user_data`, `state`), no cookies and no
+  sessionStorage, so a plain `storageState` (`playwright/.auth/admin.json`) is
+  enough — unlike Carwah UI, no session re-seeding fixture is needed.
+
+## Bookings (/cw/dashboard/bookings)
+
+- **The specs are read-only.** Pre-prod bookings are shared and change while a
+  run is going (new ones arrive every few minutes), so nothing pins a booking or
+  compares exact counts across two reads, and nothing creates, edits, assigns
+  or changes the status of a booking yet.
+- **Two tables are on the page**: a hidden ratings table comes first, so the
+  bookings table is the one with a `Booking ID` column header.
+- **Columns are found by header**, not index (`BookingsPage.column`) — there
+  are 19 of them and positions are easy to miscount.
+- **Status tabs are named `<count> <status>`** and several share a prefix
+  (Pending / Pending Extend / Pending Review), so the name is anchored. The
+  selected tab and page are kept in the URL
+  (`?{"status":"pending",...}#page=2`).
+- **Every list change is a `GetBookingsQuery`** on
+  `prebeta.carwah.co:2052/graphql`; `reloadingList` waits for it so assertions
+  read the new rows, not the old ones.
+- Page sizes are 10 / 25 / 50 / 100, on an unlabelled MUI select
+  (`button "Without label"`).
+- **Columns are matched on header text content**, not `innerText`: the page
+  capitalises some on screen (`Rented days` shows as `Rented Days`).
+- **With no results there is no table at all**, only `No records found!` and
+  `Total Results: 0`.
+- **Details page**: each fact is an `li.list_item_info` holding a label span and
+  a value span with no space between them (`Booking StatusPending`), so values
+  are read from the second span. Several labels repeat across sections.
+- Mutating actions on the details page (Change Status, Edit, Assign To, Recall
+  Gateway) and **Create New Booking** exist but are untested.
+
+## Booking filters (`BookingFilters`, `bookings-filters.spec.ts`)
+
+- **Every filter in the panel is covered.** Each spec checks the
+  `GetBookingsQuery` variables, then the results as far as anything shows them:
+  - on the list — customer, ally, branch, status, payment method, make, city
+    (inside the pickup cell), pickup/dropoff date;
+  - in the API's rows (`applyFilters` returns them) — rent type
+    (`isRentToOwn`), sub-status (`subStatus`);
+  - on the first result's details page — national ID, mobile;
+  - nowhere — source, payment brand, train station, plate number: only that
+    the total narrows without emptying. Their values are pinned in
+    `testData.bookingFilters`.
+- Search sends: `customerName`, `userNid`, `plateNo`, `customerMobile`
+  (`966` + the typed local number), `allyCompanyId: [id]`, `branchIds: [id]`,
+  `status: ['cancelled']`, `subStatus: ['late_confirmation']`,
+  `paymentMethod: ['CASH']`, `paymentBrand: ['TABBY']`, `makeName: [..]`,
+  `cityName: [..]`, `rentType: ['RENT_TO_OWN']`, `source: [..]`,
+  `trainStationIds: [id]`, `pickUpDate` / `dropOffDate: 'DD/MM/YYYY'`.
+  The chosen filters are also written into the page URL as JSON.
+- Text fields have ids (`#customerName`, `#userNid`, `#bookingNo`,
+  `#plateNo`). The rest are **react-selects** (`div.dropdown-select`) with
+  generated ids and no labels; the placeholder vanishes once a value is
+  chosen, so a dropdown is found by its index while it still shows the
+  placeholder. Options are `[id*="-option-"]`, and every list starts with a
+  disabled `Enter at least 4 characters to search` hint — match options
+  exactly. Typing narrows a list; for **Ally Name** it is what searches the
+  server (only ten allies are listed up front). Ally Name and branches are
+  multi-selects and stay open after a choice.
+- **branches** only lists after 4 typed characters, so the branch is typed —
+  taken from the first row, whose names are at least that long today.
+- **Agency Name appears twice** in the panel; `choose` takes an `occurrence`.
+  Both are bound to the same value.
+- `reloadingList` waits at most 15s for the query, so a filter that never
+  queries fails with that reason instead of the test timeout.
+- **Dates** use react-modern-calendar-datepicker, opening on the current month.
+  Its grid holds hidden neighbouring months too, so a day is taken by its full
+  `aria-label` (`Thursday, 15 October 2026`) and must be visible — a bare `15`
+  picked next month's. The pickup-date spec therefore picks a date from the
+  list that falls in the current month, and skips if there is none.
+- Make and city are pinned in `testData.bookingFilters` (the list shows a car's
+  display name, not its make, and a city only inside the pickup cell); ally and
+  customer are taken from the list's first row.
+- **Clear** empties every field, restores placeholders and reloads the full list.
+
+## Known product issues (report, don't work around)
+
+Specs for these are written as the feature should behave and marked
+`test.fail(true, reason)`, so the suite stays green and Playwright reports the
+moment one starts passing — then drop the mark.
+
+- **The Airports filter does nothing.** Choosing an airport and pressing
+  Search Filter sends no `GetBookingsQuery` at all; the list stays unfiltered.
+- **The Agency Name filter is ignored.** The choice is written into the page URL
+  (`agency: [{ id: "199", ... }]`) but not into `GetBookingsQuery`'s variables,
+  so the total is unchanged. The field is also shown twice.
+
+## Working style
+
+Explore the live dashboard and confirm selectors before writing a test; report
+what blocks rather than adding workarounds; when something fails, capture
+evidence (URL, dialogs, network payloads) before theorising.

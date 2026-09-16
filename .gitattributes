@@ -1,0 +1,19 @@
+# Normalize line endings: LF in the repo, auto-converted on checkout per OS.
+* text=auto
+
+# Always LF for these, regardless of platform.
+*.ts   text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binary assets — never touch line endings.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.svg  binary
+*.webm binary
+*.zip  binary
