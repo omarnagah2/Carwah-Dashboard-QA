@@ -20,6 +20,9 @@ export class BookingDetailsPage extends BasePage {
   /** Still offered on a closed booking. */
   readonly assignButton = this.byRole('button', { name: 'Assign To' });
   readonly customerCareList = this.byRole('dialog').filter({ hasText: 'Customer Care List' });
+  readonly editButton = this.byRole('button', { name: 'Edit', exact: true });
+  readonly timelineButton = this.byRole('button', { name: 'Timeline' });
+  readonly timeline = this.byRole('dialog').filter({ hasText: 'Booking TimeLine' });
 
   constructor(page: Page) {
     super(page);
@@ -56,6 +59,34 @@ export class BookingDetailsPage extends BasePage {
       hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`),
     });
     return this.page.locator('li.list_item_info').filter({ has: labelSpan }).first().locator('span').nth(1);
+  }
+
+  async edit(): Promise<void> {
+    await this.editButton.click();
+    await expect(this.page).toHaveURL(/\/cw\/dashboard\/bookings\/\d+\/edit$/);
+  }
+
+  /**
+   * The newest Timeline entry's "new Data" lines, whitespace-collapsed
+   * (`notes : …`, `total_booking_price : 455.4`). Entries are newest first,
+   * after a leading `Booking ID` line. Closes the Timeline again.
+   */
+  async latestChange(): Promise<string[]> {
+    await this.timelineButton.click();
+    const newest = this.timeline
+      .getByRole('tabpanel')
+      .getByRole('listitem')
+      .filter({ has: this.page.getByRole('heading', { name: 'new Data' }) })
+      .first();
+    const lines = newest
+      .getByRole('heading', { name: 'new Data' })
+      .locator('xpath=following-sibling::*[1]')
+      .getByRole('listitem');
+    await expect(lines.first()).toBeVisible();
+    const changes = (await lines.allInnerTexts()).map((line) => line.replace(/\s+/g, ' ').trim());
+    await this.timeline.getByRole('button', { name: 'Close' }).first().click();
+    await expect(this.timeline).toBeHidden();
+    return changes;
   }
 
   /**
@@ -145,9 +176,15 @@ export class BookingDetailsPage extends BasePage {
       const asked = JSON.stringify(answered.request().postDataJSON().variables);
       expect(offered.length > 0, `CancelledReasons for ${asked} answered ${JSON.stringify(listed)}`).toBe(true);
       const reasons = this.byRole('dialog').filter({ hasText: 'Booking Close Reasons' });
-      // The reason radios ignore check(); clicking the label selects them.
-      await reasons.getByText('Other:', { exact: true }).click();
-      await expect(reasons.getByRole('radio', { name: 'Other:' })).toBeChecked();
+      // The reason radios ignore check(); clicking the label selects them. They
+      // share the name `gender1` with the status radios in the dialog still
+      // open behind, and the choice occasionally does not stick, so the click
+      // is repeated until it does — as a user would.
+      const other = reasons.getByRole('radio', { name: 'Other:' });
+      await expect(async () => {
+        await reasons.getByText('Other:', { exact: true }).click();
+        await expect(other).toBeChecked({ timeout: 1_000 });
+      }).toPass({ timeout: 10_000 });
       await reasons.getByRole('textbox').fill(note ?? 'Closed by the Carwah Dashboard automated test');
       await reasons.getByRole('button', { name: 'Close Booking' }).click();
     }

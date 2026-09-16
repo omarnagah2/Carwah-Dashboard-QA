@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { isOperation } from '../utils/graphql';
-import { BasePage } from './base.page';
+import { BookingFormPage } from './booking-form.page';
 
 /** What `CreateBooking` answers with, as far as specs read it. */
 export interface CreatedRental {
@@ -15,14 +15,11 @@ export interface CreatedRental {
  * Add Booking at /cw/dashboard/bookings/add: the customer is looked up by
  * mobile first, and the booking form only fills in after that.
  */
-export class AddBookingPage extends BasePage {
+export class AddBookingPage extends BookingFormPage {
   /** An intl-tel-input that opens pre-filled with `+966`. */
   readonly mobile = this.page.getByRole('textbox', { name: '1 (702) 123-4567' });
   readonly customerDataButton = this.byRole('button', { name: 'Customer Data' });
   readonly customerDetails = this.byRole('heading', { name: 'Customer Details' });
-  readonly pickupCity = this.page.getByRole('textbox', { name: 'Pickup City' });
-  readonly priceHeading = this.byRole('heading', { name: 'About price' });
-  readonly cashPayment = this.byRole('radio', { name: 'Cash' });
   readonly rentButton = this.byRole('button', { name: 'Rent' });
 
   constructor(page: Page) {
@@ -73,18 +70,6 @@ export class AddBookingPage extends BasePage {
     const name = car.split(/\s+/).map(escapeRegExp).join('\\s+');
     await this.chooseUnder(/select car/i, new RegExp(`${name}\\s[\\s\\S]*\\[Daily:\\s*${dailyPrice}\\s`));
     await expect(this.priceHeading).toBeVisible();
-  }
-
-  /** A figure from the About price summary, e.g. `Due Amount`. */
-  async price(label: string | RegExp): Promise<number> {
-    const line = this.priceHeading
-      .locator('xpath=..')
-      .getByRole('listitem')
-      .filter({ hasText: label })
-      .first();
-    await expect(line).toHaveText(/\d/);
-    const numbers = (await line.innerText()).match(/-?\d+(\.\d+)?/g)!;
-    return Number(numbers[numbers.length - 1]);
   }
 
   /**

@@ -16,7 +16,7 @@ tests/
                     booking-lifecycle (writes: one booking per run, closed at the end)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                bookings (list), booking-filters (panel), booking-details,
-               add-booking
+               booking-form (shared price summary), add-booking, edit-booking
 src/utils/     graphql.ts (isOperation)
 src/config/    test-data.ts (all data, env-overridable), auth.ts
 src/reporters/ environment-classifier (copied from Carwah UI)
@@ -82,7 +82,7 @@ npm run typecheck
 - **Details page**: each fact is an `li.list_item_info` holding a label span and
   a value span with no space between them (`Booking StatusPending`), so values
   are read from the second span. Several labels repeat across sections.
-- Other actions on the details page — Edit, Add Note, Update Extra Service, Change Duration, Update Price, Add
+- Other actions on the details page — Add Note, Update Extra Service, Change Duration, Update Price, Add
   Extra Fees, Recall Gateway — are untested. Timeline is read-only.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
@@ -93,8 +93,8 @@ npm run typecheck
   dedicated test customer `591593593` (Omar Nagah) — never Carwah UI's
   `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
   cash, the form's default three days from now (all in `testData.newBooking`),
-  assigns it to customer care, then walks it Pending → Confirmed → Car
-  Received → Invoiced → Closed. The
+  assigns it to customer care, extends it by a day, then walks it Pending →
+  Confirmed → Car Received → Invoiced → Closed. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -136,6 +136,29 @@ npm run typecheck
   reopens, and in the list's Assign cell as `Assign To <name>`.
 - Assign To stays available on a closed booking.
 
+### Editing (`EditBookingPage`)
+
+- **Edit** (details page, until the booking is closed) opens
+  `/bookings/<id>/edit`: the Add Booking form filled with the booking, plus
+  status buttons at the top, a **Note** and **Save**. The spec moves the
+  drop-off a day later and writes a note; the summary reprices at once
+  (`GetRentPrice`: 4 days → 396, VAT 59.4, due 455.4). Invoicing then uses
+  the new total.
+- **Save** sends `EditBooking` (`data.editRental.{errors, rental}`, with
+  `notes`) and stays on the edit page. The details page shows the new return
+  date, days and totals; the **Timeline**'s newest entry lists old and new
+  data (`dropoff Date : …`, `notes : …`, `total_booking_price : …`) —
+  `latestChange()` reads it. The drop-off time loses its seconds on save.
+- The date fields are read-only and open a **MUI date-time picker**
+  (`.MuiPickersModal-dialogRoot`; `getByRole('dialog')` finds two nodes). Its
+  grid pads with neighbouring months' days, classed `hidden`. While it is
+  open the page behind is aria-hidden, so read the field before opening it.
+- **Reached through the Edit button, the dates and the picker are in Arabic**
+  (`سبتمبر ١٩ ٢١:٢٩`, Arabic month and day names) on the English dashboard;
+  opened by URL they are English. So `setDropoffDate` reads no labels: it
+  steps months by count with the English arrow buttons and matches the day in
+  either digit set.
+
 ### Changing status (`BookingDetailsPage.changeStatus`)
 
 - The **Change Status** dialog lists the statuses as MUI radios with no
@@ -151,7 +174,10 @@ npm run typecheck
   | Invoiced | `AllyReceiveCar` | `#grandTotal` (starts at 0; the image is optional), then "Are you sure you want to invoice…" → Confirm. SubStatus becomes *Pending review* |
   | Closed | `CloseRental` | "Booking Close Reasons": *The customer has debts from ally* or *Other:* (id 997) plus a note. The spec always closes with Other and a note saying the automated test did it |
 
-- The close reasons are radios that ignore `check()` — click the label.
+- The close reasons are radios that ignore `check()` — click the label. They
+  share the name `gender1` with the status radios in the dialog still open
+  behind, and the choice occasionally does not stick; the click is repeated
+  until it does.
 - **Closed is final**: the Change Status button disappears.
 - **Wait for the booking before acting.** Pressing Change before the details
   have loaded sends `CancelledReasons` without `status`; the API rejects it
@@ -214,6 +240,10 @@ moment one starts passing — then drop the mark.
   booking has loaded, `CancelledReasons` goes out without `status`, fails,
   and the close dialog shows an empty reason list with an enabled
   Close Booking button. Specs avoid it by waiting; a fast user would not.
+- **Edit Booking shows dates in Arabic** when opened with the Edit button on
+  the English dashboard — the Pickup/Drop off fields and the whole date picker
+  (month names, weekday names, digits). Opening the edit URL directly shows
+  them in English. Timeline times are in Arabic digits too.
 - **The Agency Name filter is ignored.** The choice is written into the page URL
   (`agency: [{ id: "199", ... }]`) but not into `GetBookingsQuery`'s variables,
   so the total is unchanged. The field is also shown twice.

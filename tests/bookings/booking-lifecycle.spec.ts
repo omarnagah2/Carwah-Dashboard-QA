@@ -3,6 +3,7 @@ import { testData } from '../../src/config/test-data';
 import { AddBookingPage } from '../../src/pages/add-booking.page';
 import { BookingDetailsPage } from '../../src/pages/booking-details.page';
 import { BookingsPage } from '../../src/pages/bookings.page';
+import { EditBookingPage } from '../../src/pages/edit-booking.page';
 
 /**
  * Writes to pre-prod: books one real booking for the dedicated test customer,
@@ -14,9 +15,10 @@ test.describe('booking lifecycle', () => {
   test.describe.configure({ mode: 'serial', retries: 0 });
 
   const booking = testData.newBooking;
-  const subtotal = booking.dailyPrice * booking.days;
-  const vat = roundMoney(subtotal * 0.15);
-  const due = roundMoney(subtotal + vat);
+  const { subtotal, vat, due } = priceFor(booking.days);
+  /** The edit step extends the booking by a day. */
+  const extended = { days: booking.days + 1, ...priceFor(booking.days + 1) };
+  const editNote = 'Extended one day by the Carwah Dashboard automated test';
   let bookingId: string;
 
   test('an admin books a car for a customer', async ({ page }) => {
@@ -93,6 +95,49 @@ test.describe('booking lifecycle', () => {
     expect((await list.listedBooking(bookingId))['Assign']).toBe(`Assign To ${booking.assignee}`);
   });
 
+  test('extending it by a day', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const returning = await details.detail('Return date and time');
+    const currentReturn = new Date(returning.slice(0, 10) + 'T00:00:00');
+    const newReturn = addDays(currentReturn, 1);
+
+    await details.edit();
+    const form = new EditBookingPage(page);
+    await form.expectLoaded();
+    await test.step('the form opens with the booking as it is', async () => {
+      await expect(form.pickupCity).toHaveValue(booking.city);
+      await expect(form.cashPayment).toBeChecked();
+      expect(await form.price(`Total days (${booking.days})`)).toBe(subtotal);
+      expect(await form.price('Due Amount')).toBe(due);
+    });
+
+    await form.setDropoffDate(currentReturn, newReturn);
+    await test.step('the price follows the new length', async () => {
+      expect(await form.price(`Total days (${extended.days})`)).toBe(extended.subtotal);
+      expect(await form.price('Vat 15%')).toBe(extended.vat);
+      expect(await form.price('Due Amount')).toBe(extended.due);
+    });
+    await form.note.fill(editNote);
+    await form.save();
+
+    await details.open(bookingId);
+    await test.step('the booking carries the change', async () => {
+      expect((await details.detail('Return date and time')).slice(0, 10)).toBe(isoDate(newReturn));
+      expect(await details.detail('Total rental days')).toBe(String(extended.days));
+      expect(Number(await details.detail('Price before tax'))).toBe(extended.subtotal);
+      expect(Number(await details.detail('Tax'))).toBe(extended.vat);
+      expect(Number(await details.detail('Grand Total'))).toBe(extended.due);
+      expect(await details.detail('Booking Status')).toBe('Pending');
+    });
+    await test.step('the timeline records it', async () => {
+      const change = await details.latestChange();
+      expect(change).toContain(`dropoff Date : ${isoDate(newReturn)}`);
+      expect(change).toContain(`notes : ${editNote}`);
+      expect(change).toContain(`total_booking_price : ${extended.due}`);
+    });
+  });
+
   test('confirming it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
@@ -117,12 +162,12 @@ test.describe('booking lifecycle', () => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
 
-    await details.changeStatus('Invoiced', { grandTotal: due });
+    await details.changeStatus('Invoiced', { grandTotal: extended.due });
 
     await details.open(bookingId);
     expect(await details.detail('Booking Status')).toBe('Invoiced');
     expect(await details.detail('Booking SubStatus')).toBe('Pending review');
-    expect(Number(await details.detail('Grand Total'))).toBe(due);
+    expect(Number(await details.detail('Grand Total'))).toBe(extended.due);
   });
 
   test('closing it', async ({ page }) => {
@@ -138,8 +183,21 @@ test.describe('booking lifecycle', () => {
   });
 });
 
+/** What the forms charge for `days` of the pinned car: 15% VAT on top. */
+function priceFor(days: number): { subtotal: number; vat: number; due: number } {
+  const subtotal = testData.newBooking.dailyPrice * days;
+  const vat = roundMoney(subtotal * 0.15);
+  return { subtotal, vat, due: roundMoney(subtotal + vat) };
+}
+
 function roundMoney(amount: number): number {
   return Math.round(amount * 100) / 100;
+}
+
+function addDays(date: Date, days: number): Date {
+  const moved = new Date(date);
+  moved.setDate(moved.getDate() + days);
+  return moved;
 }
 
 /** YYYY-MM-DD in local time, as the API reports dates. */
