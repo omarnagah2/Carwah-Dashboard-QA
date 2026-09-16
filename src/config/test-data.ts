@@ -25,6 +25,25 @@ export const testData = {
     airport: 'King Khalid International Airport-Terminal 1',
     agency: 'mh-agency',
   },
+  /**
+   * What the booking-creation spec books. The customer is a dedicated test
+   * customer, not Carwah UI's, so the two suites never contend for one
+   * customer's bookings. Created bookings are left as they are: the super
+   * admin may create another while one is still pending.
+   */
+  newBooking: {
+    customerMobile: process.env.CARWAH_BOOKING_CUSTOMER ?? '591593593',
+    customerName: 'Omar Nagah',
+    city: 'Riyadh',
+    ally: 'Hegazy Cars',
+    branch: 'Hegazy Riyadh',
+    /** As the car dropdown names it; the list shows it as `Suzuki - Dzire - 2021`. */
+    car: 'Suzuki - Dzire - - 2021',
+    listedCar: 'Suzuki - Dzire - 2021',
+    dailyPrice: 99,
+    /** The form's default rental length. */
+    days: 3,
+  },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',
     password: process.env.DASHBOARD_ADMIN_PASSWORD ?? '',

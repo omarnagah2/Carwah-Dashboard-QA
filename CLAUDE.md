@@ -12,9 +12,12 @@ dashboard gives a reason not to.
 tests/
 ├── auth.setup.ts   # admin sign-in, once per run; every spec reuses it
 ├── smoke/          dashboard-reachable
-└── bookings/       bookings-list, bookings-filters (read-only)
+└── bookings/       bookings-list, bookings-filters (read-only),
+                    create-booking (writes: one booking per run)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
-               bookings (list), booking-filters (panel), booking-details
+               bookings (list), booking-filters (panel), booking-details,
+               add-booking
+src/utils/     graphql.ts (isOperation)
 src/config/    test-data.ts (all data, env-overridable), auth.ts
 src/reporters/ environment-classifier (copied from Carwah UI)
 ```
@@ -52,10 +55,11 @@ npm run typecheck
 
 ## Bookings (/cw/dashboard/bookings)
 
-- **The specs are read-only.** Pre-prod bookings are shared and change while a
-  run is going (new ones arrive every few minutes), so nothing pins a booking or
-  compares exact counts across two reads, and nothing creates, edits, assigns
-  or changes the status of a booking yet.
+- **The list and filter specs are read-only.** Pre-prod bookings are shared and
+  change while a run is going (new ones arrive every few minutes), so nothing
+  pins a booking or compares exact counts across two reads. Only
+  `create-booking.spec.ts` writes (see below); nothing edits, assigns or
+  changes the status of a booking yet.
 - **Two tables are on the page**: a hidden ratings table comes first, so the
   bookings table is the one with a `Booking ID` column header.
 - **Columns are found by header**, not index (`BookingsPage.column`) — there
@@ -77,7 +81,38 @@ npm run typecheck
   a value span with no space between them (`Booking StatusPending`), so values
   are read from the second span. Several labels repeat across sections.
 - Mutating actions on the details page (Change Status, Edit, Assign To, Recall
-  Gateway) and **Create New Booking** exist but are untested.
+  Gateway) exist but are untested. Change Status offers Pending → Confirmed →
+  Car Received → Invoiced → Closed and **no cancel**; Assign To lists customer
+  care users; Timeline is read-only.
+
+## Creating a booking (`create-booking.spec.ts`, `AddBookingPage`)
+
+- **This spec writes to pre-prod: every run creates one real booking** for the
+  dedicated test customer `591593593` (Omar Nagah) — never Carwah UI's
+  `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
+  cash, the form's default three days from now. All pinned in
+  `testData.newBooking`. **The booking is left as it is**: the super admin may
+  create another while one is pending, and the car stays offered with a pending
+  booking on it, so runs do not block each other. It is **never retried**
+  (`retries: 0`), since a retry would book again. The id is printed and added as
+  a `created booking` annotation.
+- The flow: `/cw/dashboard/bookings/add` → mobile into an intl-tel-input that
+  opens as `+966` (press End, then type the local number) → `Customer Data`
+  (`GetUsers`) → Pickup City (MUI autocomplete) → company, branch, car:
+  react-selects under headings spelled **"Selceting a company/branch"** and
+  "select car", each loading after the previous one. Their placeholder covers
+  the input, so it is focused, not clicked. Only ten companies are listed, so
+  the ally is typed.
+- **Car options repeat**: one branch lists the same model at several prices,
+  so a car is matched by name *and* `[Daily: N`. Their text content has double
+  spaces and a line break the screen hides (`Dzire -  - 2021 |…\n [Daily: 99`).
+- Choosing a car shows Extra Services, a coupon box, insurance, the **About
+  price** summary (price per day, total days, VAT 15%, Due Amount) and the
+  payment method (Cash by default). **Rent** sends `CreateBooking`
+  (`data.createRental.{errors, rental}`) and returns straight to the bookings
+  list — no confirmation step, no toast.
+- The spec checks the price summary, the API's answer, the list row (searched
+  by the new id) and the details page.
 
 ## Booking filters (`BookingFilters`, `bookings-filters.spec.ts`)
 

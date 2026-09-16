@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, type Response } from '@playwright/test';
+import { isOperation } from '../utils/graphql';
 import { BasePage } from './base.page';
 import { BookingFilters } from './booking-filters.component';
 
@@ -127,13 +128,3 @@ export interface ListedBooking {
   dropOffDate: string;
 }
 
-function isOperation(response: Response, operationName: string): boolean {
-  if (!response.url().includes('/graphql')) {
-    return false;
-  }
-  try {
-    return response.request().postDataJSON()?.operationName === operationName;
-  } catch {
-    return false;
-  }
-}
