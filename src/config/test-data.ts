@@ -41,6 +41,12 @@ export const testData = {
     car: 'Suzuki - Dzire - - 2021',
     listedCar: 'Suzuki - Dzire - 2021',
     dailyPrice: 99,
+    /** Charged through Add Extra Fees before invoicing; taxed like the rest. */
+    extraFee: {
+      name: 'Automated test fee',
+      amount: 20,
+      note: 'Fee added by the Carwah Dashboard automated test',
+    },
     /** What Update Price lowers the daily price to, late in the lifecycle. */
     suggestedPrice: 80,
     /** The form's default rental length. */

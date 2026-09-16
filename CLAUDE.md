@@ -91,7 +91,7 @@ npm run typecheck
     Change Duration, Update Price, Add Extra Fees, Print, Timeline, Extension
     Requests, Assign To;
   - Closed: the same without Change Status.
-- Untested so far: Add Extra Fees, Extension Requests, Recall Gateway, Print.
+- Untested so far: Extension Requests, Recall Gateway, Print.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
 
@@ -103,7 +103,7 @@ npm run typecheck
   cash, the form's default three days from now (all in `testData.newBooking`),
   assigns it to customer care, extends it by a day, confirms it, hands the
   car over, adds a note and extra services, lengthens it by another day,
-  lowers its daily price, invoices and closes it. The
+  lowers its daily price, charges an extra fee, invoices and closes it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -203,7 +203,9 @@ npm run typecheck
 - **Open the booking fully before acting.** `open()` also waits for
   `GetAllyCompanyQuery`, `Branch` and `GetCarProfile`: clicking Update Extra
   Service before they answer throws `undefined is not iterable` and blanks the
-  whole page (4 of 4 tries; 0 of 4 after waiting).
+  whole page (4 of 4 tries; 0 of 4 after waiting). Those waits get the
+  navigation timeout (30s): on a slow pre-prod the queries are not even sent
+  for several seconds.
 - `aboutPrice(label)` matches a line that is just label + amount, so `Total`
   does not pick up `Total days (4)`.
 
@@ -232,6 +234,20 @@ npm run typecheck
   (Price per day 99, Total days 495) and adds a line
   `Discount (Special dis.) - (19.19)% 95` — the difference × days, as a
   percentage of the list price. Its Due Amount does follow here (494.5).
+
+### Extra fees (`BookingDetailsPage.addExtraFee`)
+
+- **Add Extra Fees** opens a dialog with **Extra Fees Name**, **Extra Fees
+  Amount** and a note textarea; **Add** stays disabled until all three are
+  filled. Add sends `AddExtraFee { rentalId, name, amount, note }`; success
+  answers `errors: null` (not `[]`) with the created `extraFee`.
+- The fee is **taxed with the rest**: About Price gains an **Extra Fees**
+  section (`Automated test fee 20`), and Total, VAT, Due Amount and the
+  booking's Price before tax / Tax / Grand Total all include it. Invoicing
+  then uses that Grand Total.
+- **On a closed booking the button is offered but the API refuses the fee**
+  with `Invalid rental status` (a red toast), so the spec charges it before
+  invoicing, while the booking is Car Received.
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 
@@ -322,6 +338,9 @@ moment one starts passing — then drop the mark.
   the ally/branch/car queries answer, the page throws
   `undefined is not iterable` and renders nothing. Specs wait; not given a
   failing spec, because whether a click lands early is timing.
+- **Add Extra Fees is offered on closed bookings that cannot take a fee.**
+  The dialog opens and accepts input, and only the API's
+  `Invalid rental status` says otherwise.
 - **Edit Booking shows dates in Arabic** when opened with the Edit button on
   the English dashboard — the Pickup/Drop off fields and the whole date picker
   (month names, weekday names, digits). Opening the edit URL directly shows

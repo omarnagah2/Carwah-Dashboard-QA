@@ -33,6 +33,8 @@ export class BookingDetailsPage extends BasePage {
   readonly updatePriceButton = this.byRole('button', { name: 'Update Price' });
   readonly suggestedPrice = this.page.getByRole('textbox', { name: 'Suggested price per day' });
   readonly priceDialog = this.byRole('dialog').filter({ has: this.suggestedPrice });
+  readonly addExtraFeesButton = this.byRole('button', { name: 'Add Extra Fees' });
+  readonly feeDialog = this.byRole('dialog').filter({ has: this.page.getByRole('textbox', { name: 'Extra Fees Name' }) });
 
   constructor(page: Page) {
     super(page);
@@ -45,8 +47,10 @@ export class BookingDetailsPage extends BasePage {
    * blanks it.
    */
   async open(bookingId: string): Promise<void> {
+    // Part of loading the page, so given the navigation timeout: on a slow
+    // pre-prod they are not even requested for several seconds.
     const related = ['GetAllyCompanyQuery', 'Branch', 'GetCarProfile'].map((operation) =>
-      this.page.waitForResponse((r) => isOperation(r, operation)),
+      this.page.waitForResponse((r) => isOperation(r, operation), { timeout: 30_000 }),
     );
     await this.page.goto(`/cw/dashboard/bookings/${bookingId}`, { waitUntil: 'domcontentloaded' });
     await this.expectLoaded();
@@ -222,6 +226,29 @@ export class BookingDetailsPage extends BasePage {
     expect(body.errors ?? result?.errors ?? [], 'EditSuggestedPrice errors').toEqual([]);
     expect(result?.status, `EditSuggestedPrice answered ${JSON.stringify(body)}`).toBe('success');
     await expect(this.priceDialog).toBeHidden();
+  }
+
+  /**
+   * Charges a fee through Add Extra Fees and waits for the API to accept it.
+   * Add stays disabled until name, amount and note are all filled. The button
+   * is also offered on a closed booking, where the API refuses the fee
+   * ("Invalid rental status").
+   */
+  async addExtraFee({ name, amount, note }: { name: string; amount: number; note: string }): Promise<void> {
+    await this.addExtraFeesButton.click();
+    const add = this.feeDialog.getByRole('button', { name: 'Add', exact: true });
+    await this.feeDialog.getByRole('textbox', { name: 'Extra Fees Name' }).fill(name);
+    await this.feeDialog.getByRole('textbox', { name: 'Extra Fees Amount' }).fill(String(amount));
+    await expect(add, 'Add without a note').toBeDisabled();
+    await this.feeDialog.locator('textarea').fill(note);
+    const response = this.page.waitForResponse((r) => isOperation(r, 'AddExtraFee'));
+    await add.click();
+    const body = await (await response).json();
+    const result = body.data?.addExtraFee;
+    // A successful answer carries `errors: null`.
+    expect(body.errors ?? result?.errors ?? [], 'AddExtraFee errors').toEqual([]);
+    expect(result?.status, `AddExtraFee answered ${JSON.stringify(body)}`).toBe('success');
+    await expect(this.feeDialog).toBeHidden();
   }
 
   /**

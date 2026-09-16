@@ -32,6 +32,8 @@ test.describe('booking lifecycle', () => {
   const discountAmount = (booking.dailyPrice - booking.suggestedPrice) * lengthenedDays;
   const discountPercent = (((booking.dailyPrice - booking.suggestedPrice) / booking.dailyPrice) * 100).toFixed(2);
   const discounted = priceFor(lengthenedDays, lengthenedExtras - discountAmount);
+  /** Add Extra Fees then adds a fee, taxed like the rest. */
+  const withFee = priceFor(lengthenedDays, lengthenedExtras - discountAmount + booking.extraFee.amount);
   const editNote = 'Extended one day by the Carwah Dashboard automated test';
   let bookingId: string;
 
@@ -273,16 +275,34 @@ test.describe('booking lifecycle', () => {
     });
   });
 
+  test('charging an extra fee', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+
+    await details.addExtraFee(booking.extraFee);
+
+    await details.open(bookingId);
+    expect(await details.aboutPrice(booking.extraFee.name)).toBe(booking.extraFee.amount);
+    await test.step('the fee is taxed with the rest', async () => {
+      expect(await details.aboutPrice('Total')).toBe(withFee.subtotal);
+      expect(await details.aboutPrice('Vat 15%')).toBe(withFee.vat);
+      expect(await details.aboutPrice('Due Amount')).toBe(withFee.due);
+      expect(Number(await details.detail('Price before tax'))).toBe(withFee.subtotal);
+      expect(Number(await details.detail('Tax'))).toBe(withFee.vat);
+      expect(Number(await details.detail('Grand Total'))).toBe(withFee.due);
+    });
+  });
+
   test('invoicing it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
 
-    await details.changeStatus('Invoiced', { grandTotal: discounted.due });
+    await details.changeStatus('Invoiced', { grandTotal: withFee.due });
 
     await details.open(bookingId);
     expect(await details.detail('Booking Status')).toBe('Invoiced');
     expect(await details.detail('Booking SubStatus')).toBe('Pending review');
-    expect(Number(await details.detail('Grand Total'))).toBe(discounted.due);
+    expect(Number(await details.detail('Grand Total'))).toBe(withFee.due);
   });
 
   test('closing it', async ({ page }) => {
