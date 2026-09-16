@@ -13,6 +13,7 @@ tests/
 ├── auth.setup.ts   # admin sign-in, once per run; every spec reuses it
 ├── smoke/          dashboard-reachable
 └── bookings/       bookings-list, bookings-filters (read-only),
+                    recall-gateway (clicks Recall Gateway on one customer booking),
                     booking-lifecycle (writes: one booking per run, closed at the end)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                bookings (list), booking-filters (panel), booking-details,
@@ -57,7 +58,6 @@ npm run clean:cache                                       # drop the cached bund
 - **The session is in localStorage** (`user_data`, `state`), no cookies and no
   sessionStorage, so a plain `storageState` (`playwright/.auth/admin.json`) is
   enough — unlike Carwah UI, no session re-seeding fixture is needed.
-
 - **Import `test`/`expect` from `src/fixtures/test`**, not
   `@playwright/test`: every context the suite opens (setup's probe context
   too, via `prepareContext`) needs the two routes below.
@@ -81,7 +81,8 @@ npm run clean:cache                                       # drop the cached bund
 - **The list and filter specs are read-only.** Pre-prod bookings are shared and
   change while a run is going (new ones arrive every few minutes), so nothing
   pins a booking or compares exact counts across two reads. Only
-  `booking-lifecycle.spec.ts` writes (see below).
+  `booking-lifecycle.spec.ts` writes to bookings of its own, and
+  `recall-gateway.spec.ts` recalls one customer booking's payment (see below).
 - **Two tables are on the page**: a hidden ratings table comes first, so the
   bookings table is the one with a `Booking ID` column header.
 - **Columns are found by header**, not index (`BookingsPage.column`) — there
@@ -117,7 +118,27 @@ npm run clean:cache                                       # drop the cached bund
   - Closed: the same without Change Status.
 - While an extension request is pending, Change Duration and Update Price
   leave the bar; after a confirmed extension they do not come back.
-- Untested so far: Recall Gateway, Print.
+- Untested so far: Print.
+
+## Recall Gateway (`recall-gateway.spec.ts`)
+
+- A refresh icon beside the status badge (`<i role="button" aria-label="Recall
+  Gateway">`), shown **only on an online booking whose Payment Status is
+  Pending** — a payment started at the gateway with no result yet. Not on
+  Paid or Not Paid online bookings, nor on cash ones, so the lifecycle's
+  bookings never have it.
+- Clicking sends `RecallPaymentGateway { rentalId }` — a **query**, answered
+  with the rental payment's id — then reloads the booking and toasts
+  "payment gateway recall success". Booking 21539 went Pending → **Paid**
+  ("Paid by customer - Jack Quinn", Paid and reserved badges) and lost the
+  icon; 21582 stayed Pending and kept it.
+- **The list shows a pending gateway payment as "Not Paid"**; only the
+  details page says Pending. The spec therefore opens up to five Online "Not
+  Paid" bookings from the Pending tab to find one, and skips if none.
+- **It clicks the icon on one real customer booking per run**, as agreed with
+  the suite's owner: the recall only brings the payment status in line with
+  the gateway. It checks the answer, the toast, and that the icon is shown
+  exactly while the status is still Pending.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
 

@@ -37,6 +37,11 @@ export class BookingDetailsPage extends BasePage {
   readonly addExtraFeesButton = this.byRole('button', { name: 'Add Extra Fees' });
   readonly feeDialog = this.byRole('dialog').filter({ has: this.page.getByRole('textbox', { name: 'Extra Fees Name' }) });
   readonly extensionRequestsButton = this.byRole('button', { name: 'Extension Requests' });
+  /**
+   * A refresh icon beside the status badge (`<i role="button">`), shown only on
+   * an online booking whose payment is pending at the gateway.
+   */
+  readonly recallGatewayIcon = this.byRole('button', { name: 'Recall Gateway' });
 
   constructor(page: Page) {
     super(page);
@@ -255,6 +260,22 @@ export class BookingDetailsPage extends BasePage {
     expect(body.errors ?? result?.errors ?? [], 'AddExtraFee errors').toEqual([]);
     expect(result?.status, `AddExtraFee answered ${JSON.stringify(body)}`).toBe('success');
     await expect(this.feeDialog).toBeHidden();
+  }
+
+  /**
+   * Asks the payment gateway for the booking's payment again. The call is a
+   * query, `RecallPaymentGateway`, answered with the rental payment's id; the
+   * page then reloads the booking and toasts "payment gateway recall success".
+   */
+  async recallGateway(): Promise<void> {
+    const recalled = this.page.waitForResponse((r) => isOperation(r, 'RecallPaymentGateway'));
+    const reloaded = this.page.waitForResponse((r) => isOperation(r, 'GetRentalDetailsQuery'));
+    await this.recallGatewayIcon.click();
+    const body = await (await recalled).json();
+    expect(body.errors ?? [], 'RecallPaymentGateway errors').toEqual([]);
+    expect(body.data?.recallPaymentGateway?.id, `RecallPaymentGateway answered ${JSON.stringify(body)}`).toBeTruthy();
+    await reloaded;
+    await expect(this.page.getByText('payment gateway recall success')).toBeVisible();
   }
 
   async extensionRequests(): Promise<ExtensionRequests> {
