@@ -13,7 +13,7 @@ tests/
 ├── auth.setup.ts   # admin sign-in, once per run; every spec reuses it
 ├── smoke/          dashboard-reachable
 └── bookings/       bookings-list, bookings-filters (read-only),
-                    create-booking (writes: one booking per run)
+                    booking-lifecycle (writes: one booking per run, closed at the end)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                bookings (list), booking-filters (panel), booking-details,
                add-booking
@@ -58,8 +58,7 @@ npm run typecheck
 - **The list and filter specs are read-only.** Pre-prod bookings are shared and
   change while a run is going (new ones arrive every few minutes), so nothing
   pins a booking or compares exact counts across two reads. Only
-  `create-booking.spec.ts` writes (see below); nothing edits, assigns or
-  changes the status of a booking yet.
+  `booking-lifecycle.spec.ts` writes (see below).
 - **Two tables are on the page**: a hidden ratings table comes first, so the
   bookings table is the one with a `Booking ID` column header.
 - **Columns are found by header**, not index (`BookingsPage.column`) — there
@@ -80,22 +79,25 @@ npm run typecheck
 - **Details page**: each fact is an `li.list_item_info` holding a label span and
   a value span with no space between them (`Booking StatusPending`), so values
   are read from the second span. Several labels repeat across sections.
-- Mutating actions on the details page (Change Status, Edit, Assign To, Recall
-  Gateway) exist but are untested. Change Status offers Pending → Confirmed →
-  Car Received → Invoiced → Closed and **no cancel**; Assign To lists customer
-  care users; Timeline is read-only.
+- Other actions on the details page — Edit, Assign To (lists customer care
+  users), Add Note, Update Extra Service, Change Duration, Update Price, Add
+  Extra Fees, Recall Gateway — are untested. Timeline is read-only.
 
-## Creating a booking (`create-booking.spec.ts`, `AddBookingPage`)
+## Booking lifecycle (`booking-lifecycle.spec.ts`)
+
+### Creating (`AddBookingPage`)
 
 - **This spec writes to pre-prod: every run creates one real booking** for the
   dedicated test customer `591593593` (Omar Nagah) — never Carwah UI's
   `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
-  cash, the form's default three days from now. All pinned in
-  `testData.newBooking`. **The booking is left as it is**: the super admin may
-  create another while one is pending, and the car stays offered with a pending
-  booking on it, so runs do not block each other. It is **never retried**
-  (`retries: 0`), since a retry would book again. The id is printed and added as
-  a `created booking` annotation.
+  cash, the form's default three days from now (all in `testData.newBooking`),
+  then walks it Pending → Confirmed → Car Received → Invoiced → Closed. The
+  steps are **serial and never retried** (a retry would book again). The id is
+  printed and added as a `created booking` annotation.
+- **A run that fails midway leaves its booking in that status.** That does not
+  block the next run — the super admin may book while one is pending, and the
+  car stays offered — but close it by hand (or with `changeStatus('Closed')`)
+  so test bookings do not pile up.
 - The flow: `/cw/dashboard/bookings/add` → mobile into an intl-tel-input that
   opens as `+966` (press End, then type the local number) → `Customer Data`
   (`GetUsers`) → Pickup City (MUI autocomplete) → company, branch, car:
@@ -113,6 +115,28 @@ npm run typecheck
   list — no confirmation step, no toast.
 - The spec checks the price summary, the API's answer, the list row (searched
   by the new id) and the details page.
+
+### Changing status (`BookingDetailsPage.changeStatus`)
+
+- The **Change Status** dialog lists the statuses as MUI radios with no
+  accessible name, so a status is taken by its row's text. The list fills in
+  after `GetStatus` answers — **Confirmed appears a beat later** than the rest.
+  The first row, disabled, always reads Pending, even for a confirmed booking.
+- Each choice sends its own mutation, answered as `{ errors, status: 'success' }`:
+
+  | Status | Mutation | Extra steps |
+  |---|---|---|
+  | Confirmed | `AcceptRent` | — |
+  | Car Received | `CarRecieved` (sic) | — |
+  | Invoiced | `AllyReceiveCar` | `#grandTotal` (starts at 0; the image is optional), then "Are you sure you want to invoice…" → Confirm. SubStatus becomes *Pending review* |
+  | Closed | `CloseRental` | "Booking Close Reasons": *The customer has debts from ally* or *Other:* (id 997) plus a note. The spec always closes with Other and a note saying the automated test did it |
+
+- The close reasons are radios that ignore `check()` — click the label.
+- **Closed is final**: the Change Status button disappears.
+- **Wait for the booking before acting.** Pressing Change before the details
+  have loaded sends `CancelledReasons` without `status`; the API rejects it
+  (`Variable "$status" … was not provided`) and the reasons dialog opens
+  empty. `expectLoaded` waits for the Booking Status value for that reason.
 
 ## Booking filters (`BookingFilters`, `bookings-filters.spec.ts`)
 
@@ -166,6 +190,10 @@ moment one starts passing — then drop the mark.
 
 - **The Airports filter does nothing.** Choosing an airport and pressing
   Search Filter sends no `GetBookingsQuery` at all; the list stays unfiltered.
+- **Closing too quickly offers no reasons.** If Change is pressed before the
+  booking has loaded, `CancelledReasons` goes out without `status`, fails,
+  and the close dialog shows an empty reason list with an enabled
+  Close Booking button. Specs avoid it by waiting; a fast user would not.
 - **The Agency Name filter is ignored.** The choice is written into the page URL
   (`agency: [{ id: "199", ... }]`) but not into `GetBookingsQuery`'s variables,
   so the total is unchanged. The field is also shown twice.
