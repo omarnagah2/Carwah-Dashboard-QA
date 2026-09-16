@@ -128,8 +128,9 @@ export class BookingsPage extends BasePage {
    */
   private async reloadingList(action: () => Promise<void>): Promise<Response> {
     // Bounded, so an action that never queries (the Airports filter) fails
-    // with a reason instead of running into the test timeout.
-    const response = this.page.waitForResponse((r) => isOperation(r, 'GetBookingsQuery'), { timeout: 15_000 });
+    // with a reason instead of running into the test timeout — but long
+    // enough for API pacing, which has held a list query over 10s.
+    const response = this.page.waitForResponse((r) => isOperation(r, 'GetBookingsQuery'), { timeout: 30_000 });
     await action();
     const answered = await response;
     expect(answered.ok(), `GetBookingsQuery answered ${answered.status()}`).toBeTruthy();

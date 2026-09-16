@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '../../src/fixtures/test';
 import { testData } from '../../src/config/test-data';
 import { AddBookingPage } from '../../src/pages/add-booking.page';
@@ -413,6 +414,41 @@ test.describe('booking lifecycle', () => {
     expect(await details.detail('Booking Status')).toBe('Closed');
     // Closed is final: there is nothing left to change it to.
     await expect(details.changeStatusButton).toHaveCount(0);
+  });
+
+  // Printing changes nothing on the booking; each print generates a new PDF.
+  test('printing it', async ({ page }, testInfo) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const bookingNo = await details.detail('Booking No./ID');
+    const saved = testInfo.outputPath(`rental-${bookingNo}.pdf`);
+
+    const { fileUrl } = await details.print(saved);
+
+    // The PDF's text is in embedded fonts, so its content is checked through
+    // what the API says it is: this booking's folder and number.
+    const { pathname, searchParams } = new URL(fileUrl);
+    expect(pathname).toContain(`/rental-pdfs/`);
+    expect(pathname).toContain(`/${bookingId}/`);
+    expect(searchParams.get('response-content-disposition')).toBe(`attachment; filename="rental-${bookingNo}.pdf"`);
+    const pdf = readFileSync(saved);
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdf.length).toBeGreaterThan(10_000);
+    await testInfo.attach('booking pdf', { path: saved, contentType: 'application/pdf' });
+  });
+
+  test('the printed file keeps its name', async ({ page }, testInfo) => {
+    test.fail(
+      true,
+      'Product bug: the PDF is saved through a blob URL under a random name, not the rental-<booking no.>.pdf the API names it',
+    );
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const bookingNo = await details.detail('Booking No./ID');
+
+    const { downloadedAs } = await details.print(testInfo.outputPath('printed.pdf'));
+
+    expect(downloadedAs).toBe(`rental-${bookingNo}.pdf`);
   });
 });
 

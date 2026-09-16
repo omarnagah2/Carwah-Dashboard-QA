@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type Response } from '@playwright/test';
 import { isOperation } from '../utils/graphql';
 import { BasePage } from './base.page';
 import { pickDate } from './date-time-picker.component';
@@ -75,7 +75,9 @@ export class BookingDetailsPage extends BasePage {
    */
   async expectLoaded(): Promise<void> {
     await expect(this.mainDetailsHeading).toBeVisible();
-    await expect(this.detailValue('Booking Status')).not.toBeEmpty();
+    // Given the navigation timeout: API pacing can hold a page's queries for
+    // several seconds after a busy one.
+    await expect(this.detailValue('Booking Status')).not.toBeEmpty({ timeout: 30_000 });
   }
 
   /**
@@ -276,6 +278,37 @@ export class BookingDetailsPage extends BasePage {
     expect(body.data?.recallPaymentGateway?.id, `RecallPaymentGateway answered ${JSON.stringify(body)}`).toBeTruthy();
     await reloaded;
     await expect(this.page.getByText('payment gateway recall success')).toBeVisible();
+  }
+
+  /**
+   * Prints the booking: `GenerateRentalPdf` starts a PDF, the page polls
+   * `RentalPdfStatus` until it carries a `fileUrl` (an S3 link naming the file
+   * `rental-<booking no.>.pdf`), then downloads it through a blob URL.
+   * Returns that link and the download, saved to `saveAs`.
+   */
+  async print(saveAs: string): Promise<{ fileUrl: string; downloadedAs: string }> {
+    let fileUrl = '';
+    const onStatus = async (response: Response) => {
+      if (isOperation(response, 'RentalPdfStatus')) {
+        const status = (await response.json().catch(() => null))?.data?.rentalPdfStatus;
+        fileUrl ||= status?.fileUrl ?? '';
+      }
+    };
+    this.page.on('response', onStatus);
+    try {
+      const generated = this.page.waitForResponse((r) => isOperation(r, 'GenerateRentalPdf'));
+      const downloaded = this.page.waitForEvent('download', { timeout: 90_000 });
+      await this.byRole('button', { name: 'Print' }).click();
+      const body = await (await generated).json();
+      expect(body.errors ?? body.data?.generateRentalPdf?.errors ?? [], 'GenerateRentalPdf errors').toEqual([]);
+      expect(body.data?.generateRentalPdf?.status).toBe('success');
+      const download = await downloaded;
+      await download.saveAs(saveAs);
+      expect(fileUrl, 'RentalPdfStatus never carried a fileUrl').not.toBe('');
+      return { fileUrl, downloadedAs: download.suggestedFilename() };
+    } finally {
+      this.page.off('response', onStatus);
+    }
   }
 
   async extensionRequests(): Promise<ExtensionRequests> {

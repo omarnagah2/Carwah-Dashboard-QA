@@ -75,6 +75,9 @@ npm run clean:cache                                       # drop the cached bund
   `API_REQUESTS_PER_10S` (default 20) per 10s across the worker, roughly the
   rate the suite ran at before the cache and never saw a 429.
   `BookingsPage.open` fails with the API's answer when the list query fails.
+  Pacing holds a page's queries up to ~7s, so page loads wait up to 30s;
+  `[api]` lines in the output name any call the API refuses (the page just
+  renders nothing) and any request held over 10s.
 
 ## Bookings (/cw/dashboard/bookings)
 
@@ -118,7 +121,22 @@ npm run clean:cache                                       # drop the cached bund
   - Closed: the same without Change Status.
 - While an extension request is pending, Change Duration and Update Price
   leave the bar; after a confirmed extension they do not come back.
-- Untested so far: Print.
+- Every action on the details page is covered.
+
+## Printing (`BookingDetailsPage.print`)
+
+- **Print** sends `GenerateRentalPdf { rentalId }`, then polls
+  `RentalPdfStatus` (every ~200ms; `status: in_progress`, `fileUrl: null`)
+  until it carries a `fileUrl` — an S3 link under
+  `rental-pdfs/<yyyy>/<mm>/<booking id>/` whose content disposition names the
+  file `rental-<booking no.>.pdf` — and downloads it through a blob URL. It
+  took ~12s; each print generates a new PDF.
+- The PDF's text is in embedded fonts and cannot be read without a PDF
+  library, so the spec checks what the API says the file is (this booking's
+  folder and number) and that the download is a real PDF (`%PDF-`, >10 KB),
+  and attaches it to the report.
+- **The download is named after the blob** (`b44ca137-….pdf`), not
+  `rental-<booking no.>.pdf` (known issue below).
 
 ## Recall Gateway (`recall-gateway.spec.ts`)
 
@@ -151,7 +169,7 @@ npm run clean:cache                                       # drop the cached bund
   assigns it to customer care, extends it by a day, confirms it, hands the
   car over, adds a note and extra services, lengthens it by another day,
   lowers its daily price, charges an extra fee, has an extension request
-  rejected and another confirmed, invoices and closes it. The
+  rejected and another confirmed, invoices, closes and prints it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -409,7 +427,8 @@ npm run clean:cache                                       # drop the cached bund
   taken from the first row, whose names are at least that long today.
 - **Agency Name appears twice** in the panel; `choose` takes an `occurrence`.
   Both are bound to the same value.
-- `reloadingList` waits at most 15s for the query, so a filter that never
+- `reloadingList` waits at most 30s for the query (pacing has held one over
+  10s), so a filter that never
   queries fails with that reason instead of the test timeout.
 - **Dates** use react-modern-calendar-datepicker, opening on the current month.
   Its grid holds hidden neighbouring months too, so a day is taken by its full
@@ -451,6 +470,9 @@ moment one starts passing — then drop the mark.
 - **Add Extra Fees is offered on closed bookings that cannot take a fee.**
   The dialog opens and accepts input, and only the API's
   `Invalid rental status` says otherwise.
+- **Printed PDFs are saved under a random name.** The API names the file
+  `rental-<booking no.>.pdf`, but the page downloads it through a blob URL,
+  so the browser saves `<uuid>.pdf`. Marked `test.fail` in the lifecycle.
 - **Edit Booking shows dates in Arabic** when opened with the Edit button on
   the English dashboard — the Pickup/Drop off fields and the whole date picker
   (month names, weekday names, digits). Opening the edit URL directly shows

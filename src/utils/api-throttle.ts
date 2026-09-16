@@ -34,12 +34,37 @@ async function takeSlot(): Promise<void> {
   }
 }
 
-/** Keeps the dashboard's API calls under the rate limit. */
+/**
+ * Keeps the dashboard's API calls under the rate limit, and logs any call the
+ * API refuses — the page swallows those and just renders nothing.
+ */
 export async function paceApiCalls(context: BrowserContext): Promise<void> {
   await context.route(testData.apiUrl, async (route) => {
-    if (route.request().method() === 'POST') {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      const queued = Date.now();
       await takeSlot();
+      const waited = Date.now() - queued;
+      // A page load is often held a few seconds; only a long wait is news.
+      if (waited > 10_000) {
+        console.log(`[api] held ${operationOf(request.postData())} for ${Math.round(waited / 1_000)}s`);
+      }
     }
     await route.continue();
   });
+  context.on('response', async (response) => {
+    if (response.url() !== testData.apiUrl || response.ok()) {
+      return;
+    }
+    const body = await response.text().catch(() => '');
+    console.log(`[api] ${operationOf(response.request().postData())} answered ${response.status()}: ${body.slice(0, 200)}`);
+  });
+}
+
+function operationOf(postData: string | null): string {
+  try {
+    return JSON.parse(postData ?? '{}').operationName ?? 'request';
+  } catch {
+    return 'request';
+  }
 }
