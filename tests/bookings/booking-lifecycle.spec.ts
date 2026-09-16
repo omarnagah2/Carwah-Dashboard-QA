@@ -48,17 +48,17 @@ test.describe('booking lifecycle', () => {
     await test.step('the booking is listed as pending', async () => {
       await expect(list.rows.first()).toBeVisible();
       await list.searchByBookingNo(rental.id);
-      await expect(list.rows).toHaveCount(1);
-      expect(await list.column('Booking ID')).toEqual([rental.id]);
-      expect(await list.column('Customer')).toEqual([booking.customerName]);
-      expect(await list.column('Ally')).toEqual([booking.ally]);
-      expect(await list.column('branch')).toEqual([booking.branch]);
-      expect(await list.column('Car')).toEqual([booking.listedCar]);
-      expect(await list.column('Rented days')).toEqual([String(booking.days)]);
-      expect(await list.column('Payment Method')).toEqual(['Cash']);
-      expect(await list.column('Price/Day')).toEqual([String(booking.dailyPrice)]);
-      expect((await list.column('Billing Amount')).map(Number)).toEqual([due]);
-      expect((await list.column('Booking Status'))[0]).toMatch(/^Pending\b/);
+      const listed = await list.listedBooking(rental.id);
+      expect(listed['Customer']).toBe(booking.customerName);
+      expect(listed['Ally']).toBe(booking.ally);
+      expect(listed['branch']).toBe(booking.branch);
+      expect(listed['Car']).toBe(booking.listedCar);
+      expect(listed['Rented days']).toBe(String(booking.days));
+      expect(listed['Payment Method']).toBe('Cash');
+      expect(listed['Price/Day']).toBe(String(booking.dailyPrice));
+      expect(Number(listed['Billing Amount'])).toBe(due);
+      expect(listed['Booking Status']).toMatch(/^Pending\b/);
+      expect(listed['Assign']).toBe('Assign To');
     });
 
     await test.step('its details match what was booked', async () => {
@@ -72,6 +72,25 @@ test.describe('booking lifecycle', () => {
       expect(await details.detail('Total rental days')).toBe(String(booking.days));
       expect(Number(await details.detail('Grand Total'))).toBe(due);
     });
+  });
+
+  test('assigning it to customer care', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    expect(await details.assignedTo()).toBe('');
+    expect(await details.preselectedAssignee()).toBe('');
+
+    await details.assignTo(booking.assignee);
+
+    await details.open(bookingId);
+    expect(await details.assignedTo()).toBe(booking.assignee);
+    expect(await details.preselectedAssignee()).toBe(booking.assignee);
+
+    const list = new BookingsPage(page);
+    await list.open();
+    await list.searchByBookingNo(bookingId);
+    // The cell holds the Assign To button followed by the assignee.
+    expect((await list.listedBooking(bookingId))['Assign']).toBe(`Assign To ${booking.assignee}`);
   });
 
   test('confirming it', async ({ page }) => {

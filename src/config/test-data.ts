@@ -43,6 +43,11 @@ export const testData = {
     dailyPrice: 99,
     /** The form's default rental length. */
     days: 3,
+    /**
+     * The customer care user the booking is assigned to — the suite's owner,
+     * so assignments never land on someone else's queue.
+     */
+    assignee: process.env.CARWAH_BOOKING_ASSIGNEE ?? 'Omar Nagah',
   },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',

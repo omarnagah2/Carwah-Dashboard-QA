@@ -17,6 +17,9 @@ export class BookingDetailsPage extends BasePage {
   readonly mainDetailsHeading = this.byRole('heading', { name: 'Main Booking Details' });
   /** Gone once a booking is closed. */
   readonly changeStatusButton = this.byRole('button', { name: 'Change Status' });
+  /** Still offered on a closed booking. */
+  readonly assignButton = this.byRole('button', { name: 'Assign To' });
+  readonly customerCareList = this.byRole('dialog').filter({ hasText: 'Customer Care List' });
 
   constructor(page: Page) {
     super(page);
@@ -53,6 +56,53 @@ export class BookingDetailsPage extends BasePage {
       hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`),
     });
     return this.page.locator('li.list_item_info').filter({ has: labelSpan }).first().locator('span').nth(1);
+  }
+
+  /**
+   * Who the booking is assigned to, or '' — the name is a bare text node after
+   * the Assign To button, in the same container.
+   */
+  async assignedTo(): Promise<string> {
+    const container = await this.assignButton.locator('xpath=..').innerText();
+    return container.replace(/^\s*Assign To/, '').trim();
+  }
+
+  /**
+   * Assigns the booking to a customer care user and waits for the API to
+   * accept it. The user list ("Customer Care List") is radios named by the
+   * user, some names repeat, so pass one that is unique. The list's Assign To
+   * button is enabled before anyone is chosen; this always chooses first.
+   */
+  async assignTo(user: string): Promise<void> {
+    await this.assignButton.click();
+    const choice = this.customerCareList.locator('[role=radiogroup] > *').filter({
+      has: this.page.getByText(user, { exact: true }),
+    });
+    await expect(choice, `customer care users named ${user}`).toHaveCount(1);
+    await choice.getByText(user, { exact: true }).click();
+    await expect(choice.locator('input')).toBeChecked();
+
+    const response = this.page.waitForResponse((r) => isOperation(r, 'AssignRentalTo'));
+    await this.customerCareList.getByRole('button', { name: 'Assign To' }).click();
+    const sure = this.page.locator('.swal-modal');
+    await expect(sure).toContainText(`Are You Sure ? You Want To Assign this Booking To ${user}`);
+    await sure.getByRole('button', { name: 'Yes' }).click();
+
+    const body = await (await response).json();
+    expect(body.errors ?? body.data?.assignRentalTo?.errors ?? [], 'AssignRentalTo errors').toEqual([]);
+    expect(body.data?.assignRentalTo?.status, `AssignRentalTo answered ${JSON.stringify(body)}`).toBe('success');
+  }
+
+  /** The user the Assign To dialog opens with already chosen, or '' — closes it again. */
+  async preselectedAssignee(): Promise<string> {
+    await this.assignButton.click();
+    const rows = this.customerCareList.locator('[role=radiogroup] > *');
+    await expect(rows.first()).toBeVisible();
+    const chosen = rows.filter({ has: this.page.locator('input:checked') });
+    const name = (await chosen.count()) ? (await chosen.innerText()).trim() : '';
+    await this.customerCareList.getByRole('button', { name: 'Cancel' }).click();
+    await expect(this.customerCareList).toBeHidden();
+    return name;
   }
 
   /**

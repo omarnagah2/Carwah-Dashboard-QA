@@ -74,13 +74,15 @@ npm run typecheck
   (`button "Without label"`).
 - **Columns are matched on header text content**, not `innerText`: the page
   capitalises some on screen (`Rented days` shows as `Rented Days`).
+- **The Booking No./ID search matches parts** of ids and booking numbers:
+  `21597` also finds booking 8113, numbered `E21597`. Never assume one row —
+  `listedBooking(id)` picks a booking out of the results by id.
 - **With no results there is no table at all**, only `No records found!` and
   `Total Results: 0`.
 - **Details page**: each fact is an `li.list_item_info` holding a label span and
   a value span with no space between them (`Booking StatusPending`), so values
   are read from the second span. Several labels repeat across sections.
-- Other actions on the details page — Edit, Assign To (lists customer care
-  users), Add Note, Update Extra Service, Change Duration, Update Price, Add
+- Other actions on the details page — Edit, Add Note, Update Extra Service, Change Duration, Update Price, Add
   Extra Fees, Recall Gateway — are untested. Timeline is read-only.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
@@ -91,7 +93,8 @@ npm run typecheck
   dedicated test customer `591593593` (Omar Nagah) — never Carwah UI's
   `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
   cash, the form's default three days from now (all in `testData.newBooking`),
-  then walks it Pending → Confirmed → Car Received → Invoiced → Closed. The
+  assigns it to customer care, then walks it Pending → Confirmed → Car
+  Received → Invoiced → Closed. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -115,6 +118,23 @@ npm run typecheck
   list — no confirmation step, no toast.
 - The spec checks the price summary, the API's answer, the list row (searched
   by the new id) and the details page.
+
+### Assigning (`BookingDetailsPage.assignTo`)
+
+- **Assign To** opens "Customer Care List": radios named by user (26 today,
+  some names repeated — e.g. two *Asmaa Ibrahim*), so pass a unique name. The
+  spec only ever assigns to `testData.newBooking.assignee`, **Omar Nagah**
+  (user 1146), the suite's owner, so nothing lands on someone else's queue.
+- Its Assign To button is enabled before anyone is chosen; the spec always
+  chooses first and has not tried submitting empty.
+- Then a SweetAlert (`.swal-modal`, not a MUI dialog): "Are You Sure ? You
+  Want To Assign this Booking To <name>" → **Yes** sends
+  `AssignRentalTo { rentalId, userId }` and toasts "Booking Assigned
+  Successfully".
+- The assignee then shows as **bare text after the Assign To button** on the
+  details page (nothing there when unassigned), pre-checked when the dialog
+  reopens, and in the list's Assign cell as `Assign To <name>`.
+- Assign To stays available on a closed booking.
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 

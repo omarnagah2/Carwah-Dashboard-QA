@@ -96,6 +96,22 @@ export class BookingsPage extends BasePage {
     );
   }
 
+  /**
+   * One listed booking as header → cell text. The Booking No./ID search
+   * matches parts of booking numbers too (21597 also finds E21597), so a
+   * search can list more than the booking asked for; this picks it by id.
+   */
+  async listedBooking(bookingId: string): Promise<Record<string, string>> {
+    const headers = (await this.table.locator('thead th').allTextContents()).map((text) => text.trim());
+    const ids = await this.column('Booking ID');
+    const index = ids.indexOf(bookingId);
+    expect(index, `booking ${bookingId} among ${ids.join(', ')}`).toBeGreaterThanOrEqual(0);
+    const cells = await this.rows
+      .nth(index)
+      .evaluate((row) => [...(row as HTMLTableRowElement).cells].map((cell) => cell.innerText.replace(/\s+/g, ' ').trim()));
+    return Object.fromEntries(headers.map((header, i) => [header, cells[i] ?? '']));
+  }
+
   async openBooking(bookingId: string): Promise<void> {
     await this.table.getByRole('link', { name: bookingId, exact: true }).first().click();
     await expect(this.page).toHaveURL(new RegExp(`/cw/dashboard/bookings/${bookingId}$`));

@@ -59,9 +59,12 @@ test.describe('bookings list', () => {
 
     await bookings.searchByBookingNo(bookingNo);
 
-    await expect(bookings.rows).toHaveCount(1);
-    expect(await bookings.column('Booking ID')).toEqual([bookingId]);
-    expect(await bookings.total()).toBe(1);
+    // The search matches parts of ids and numbers, so other bookings may come
+    // back too — but each must contain the term.
+    expect((await bookings.listedBooking(bookingId))['Booking No.']).toBe(bookingNo);
+    const ids = await bookings.column('Booking ID');
+    const numbers = await bookings.column('Booking No.');
+    ids.forEach((id, i) => expect(`${id} ${numbers[i]}`).toContain(bookingNo));
   });
 
   test('a booking opens on its details page', async ({ page }) => {
