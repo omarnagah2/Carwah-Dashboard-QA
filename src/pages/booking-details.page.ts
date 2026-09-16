@@ -30,6 +30,9 @@ export class BookingDetailsPage extends BasePage {
   readonly extraServicesDialog = this.byRole('dialog').filter({ has: this.page.getByRole('button', { name: 'Edit', exact: true }) });
   readonly changeDurationButton = this.byRole('button', { name: 'Change Duration' });
   readonly durationDialog = this.byRole('dialog').filter({ hasText: 'Drop off Date/Time' });
+  readonly updatePriceButton = this.byRole('button', { name: 'Update Price' });
+  readonly suggestedPrice = this.page.getByRole('textbox', { name: 'Suggested price per day' });
+  readonly priceDialog = this.byRole('dialog').filter({ has: this.suggestedPrice });
 
   constructor(page: Page) {
     super(page);
@@ -202,6 +205,23 @@ export class BookingDetailsPage extends BasePage {
     expect(body.errors ?? result?.errors ?? [], 'EditRentalDuration errors').toEqual([]);
     expect(result?.status, `EditRentalDuration answered ${JSON.stringify(body)}`).toBe('success');
     await expect(this.durationDialog).toBeHidden();
+  }
+
+  /**
+   * Sets a suggested price per day through Update Price and waits for the API
+   * to accept it. The field opens empty even when a price was set before.
+   */
+  async updatePrice(pricePerDay: number): Promise<void> {
+    await this.updatePriceButton.click();
+    await expect(this.suggestedPrice).toHaveValue('');
+    await this.suggestedPrice.fill(String(pricePerDay));
+    const response = this.page.waitForResponse((r) => isOperation(r, 'EditSuggestedPrice'));
+    await this.priceDialog.getByRole('button', { name: 'Edit', exact: true }).click();
+    const body = await (await response).json();
+    const result = body.data?.editSuggestedPrice;
+    expect(body.errors ?? result?.errors ?? [], 'EditSuggestedPrice errors').toEqual([]);
+    expect(result?.status, `EditSuggestedPrice answered ${JSON.stringify(body)}`).toBe('success');
+    await expect(this.priceDialog).toBeHidden();
   }
 
   /**

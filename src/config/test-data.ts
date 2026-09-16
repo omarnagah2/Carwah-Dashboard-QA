@@ -41,6 +41,8 @@ export const testData = {
     car: 'Suzuki - Dzire - - 2021',
     listedCar: 'Suzuki - Dzire - 2021',
     dailyPrice: 99,
+    /** What Update Price lowers the daily price to, late in the lifecycle. */
+    suggestedPrice: 80,
     /** The form's default rental length. */
     days: 3,
     /**

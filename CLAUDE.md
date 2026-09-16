@@ -91,8 +91,7 @@ npm run typecheck
     Change Duration, Update Price, Add Extra Fees, Print, Timeline, Extension
     Requests, Assign To;
   - Closed: the same without Change Status.
-- Untested so far: Update Price, Add
-  Extra Fees, Extension Requests, Recall Gateway, Print.
+- Untested so far: Add Extra Fees, Extension Requests, Recall Gateway, Print.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
 
@@ -104,7 +103,7 @@ npm run typecheck
   cash, the form's default three days from now (all in `testData.newBooking`),
   assigns it to customer care, extends it by a day, confirms it, hands the
   car over, adds a note and extra services, lengthens it by another day,
-  invoices and closes it. The
+  lowers its daily price, invoices and closes it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -219,6 +218,20 @@ npm run typecheck
   and **per-day extra services are recharged for the new length** (5 days:
   495 + GPS 5 + child seat 25 = 525, VAT 78.75, 603.75). Invoicing then uses
   that Grand Total.
+
+### Updating the price (`BookingDetailsPage.updatePrice`)
+
+- **Update Price** (from Car Received on) opens a dialog with one field,
+  **Suggested price per day** (`#suggestedPricePerDay`), and **Edit** —
+  enabled even while the field is empty. The field **opens empty** even when
+  a price was set before. Edit sends `EditSuggestedPrice { rentalId,
+  suggestedPrice }` and toasts "Rent has been edited successfully".
+- The booking then charges the suggested price: its **Price per day** reads
+  80, and Price before tax / Tax / Grand Total follow (5 days at 80 = 400,
+  plus extras 30 = 430, VAT 64.5, 494.5). **About Price keeps the list price**
+  (Price per day 99, Total days 495) and adds a line
+  `Discount (Special dis.) - (19.19)% 95` — the difference × days, as a
+  percentage of the list price. Its Due Amount does follow here (494.5).
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 

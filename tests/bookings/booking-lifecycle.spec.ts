@@ -23,13 +23,15 @@ test.describe('booking lifecycle', () => {
   const withExtras = priceFor(booking.days + 1, extras);
   /** Change Duration then adds one more day, and the per-day services follow. */
   const lengthenedDays = booking.days + 2;
-  const lengthened = {
-    days: lengthenedDays,
-    ...priceFor(
-      lengthenedDays,
-      booking.extraServices.reduce((sum, service) => sum + chargeFor(service, lengthenedDays), 0),
-    ),
-  };
+  const lengthenedExtras = booking.extraServices.reduce((sum, service) => sum + chargeFor(service, lengthenedDays), 0);
+  const lengthened = { days: lengthenedDays, ...priceFor(lengthenedDays, lengthenedExtras) };
+  /**
+   * Update Price then charges the suggested daily price instead; About Price
+   * shows the difference as a discount on the list price.
+   */
+  const discountAmount = (booking.dailyPrice - booking.suggestedPrice) * lengthenedDays;
+  const discountPercent = (((booking.dailyPrice - booking.suggestedPrice) / booking.dailyPrice) * 100).toFixed(2);
+  const discounted = priceFor(lengthenedDays, lengthenedExtras - discountAmount);
   const editNote = 'Extended one day by the Carwah Dashboard automated test';
   let bookingId: string;
 
@@ -249,16 +251,38 @@ test.describe('booking lifecycle', () => {
     });
   });
 
+  test('lowering its price', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+
+    await details.updatePrice(booking.suggestedPrice);
+
+    await details.open(bookingId);
+    await test.step('the booking charges the new daily price', async () => {
+      expect(Number(await details.detail('Price per day'))).toBe(booking.suggestedPrice);
+      expect(Number(await details.detail('Price before tax'))).toBe(discounted.subtotal);
+      expect(Number(await details.detail('Tax'))).toBe(discounted.vat);
+      expect(Number(await details.detail('Grand Total'))).toBe(discounted.due);
+    });
+    await test.step('About Price shows it as a discount on the list price', async () => {
+      expect(await details.aboutPrice('Price per day')).toBe(booking.dailyPrice);
+      expect(await details.aboutPrice(`Discount (Special dis.) - (${discountPercent})%`)).toBe(discountAmount);
+      expect(await details.aboutPrice('Total')).toBe(discounted.subtotal);
+      expect(await details.aboutPrice('Vat 15%')).toBe(discounted.vat);
+      expect(await details.aboutPrice('Due Amount')).toBe(discounted.due);
+    });
+  });
+
   test('invoicing it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
 
-    await details.changeStatus('Invoiced', { grandTotal: lengthened.due });
+    await details.changeStatus('Invoiced', { grandTotal: discounted.due });
 
     await details.open(bookingId);
     expect(await details.detail('Booking Status')).toBe('Invoiced');
     expect(await details.detail('Booking SubStatus')).toBe('Pending review');
-    expect(Number(await details.detail('Grand Total'))).toBe(lengthened.due);
+    expect(Number(await details.detail('Grand Total'))).toBe(discounted.due);
   });
 
   test('closing it', async ({ page }) => {
