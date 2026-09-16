@@ -90,7 +90,7 @@ npm run typecheck
     Change Duration, Update Price, Add Extra Fees, Print, Timeline, Extension
     Requests, Assign To;
   - Closed: the same without Change Status.
-- Untested so far: Update Extra Service, Change Duration, Update Price, Add
+- Untested so far: Change Duration, Update Price, Add
   Extra Fees, Extension Requests, Recall Gateway, Print.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
@@ -102,7 +102,7 @@ npm run typecheck
   `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
   cash, the form's default three days from now (all in `testData.newBooking`),
   assigns it to customer care, extends it by a day, confirms it, hands the
-  car over, adds a note, invoices and closes it. The
+  car over, adds a note and extra services, invoices and closes it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -182,6 +182,28 @@ npm run typecheck
   page has loaded.
 - Find the card by `booking-details-card`: an XPath on `rct-block` also
   matches its `rct-block-title` and returns the title alone (an empty list).
+
+### Extra services (`BookingDetailsPage.addExtraServices`)
+
+- **Update Extra Service** (from Car Received on) opens a dialog of checkboxes
+  named `<service> <price>` — `GPS 5 SAR / Rent`, `Child Car Seat 5 SAR / Day`,
+  `yata Free` — with **Edit** and **Cancel**. 39 services today, three names
+  repeated at different prices (`test2`, `test3`, `addition driver12`), so
+  pinned services must be unique: `testData.newBooking.extraServices`.
+- **Edit** sends `CustomerUpdateRentalExtraServices { allyExtraServices,
+  branchExtraServices, rentalId }` (ids, split by who offers the service) and
+  toasts "Rent has been edited successfully". Reopening shows them ticked.
+- A per-Rent service is charged once, a per-Day one times the rental days.
+  About Price lists each (`Child Car Seat 20`, `GPS 5`), then their sum;
+  its Total, VAT and the booking's Price before tax / Tax / Grand Total all
+  include them. **Its Due Amount does not** (known issue below). Invoicing then
+  uses the Grand Total.
+- **Open the booking fully before acting.** `open()` also waits for
+  `GetAllyCompanyQuery`, `Branch` and `GetCarProfile`: clicking Update Extra
+  Service before they answer throws `undefined is not iterable` and blanks the
+  whole page (4 of 4 tries; 0 of 4 after waiting).
+- `aboutPrice(label)` matches a line that is just label + amount, so `Total`
+  does not pick up `Total days (4)`.
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 
@@ -264,6 +286,14 @@ moment one starts passing — then drop the mark.
   booking has loaded, `CancelledReasons` goes out without `status`, fails,
   and the close dialog shows an empty reason list with an enabled
   Close Booking button. Specs avoid it by waiting; a fast user would not.
+- **About Price's Due Amount ignores extra services.** With GPS and a child
+  seat added (25), About Price shows Total 421 and VAT 63.15 but Due Amount
+  455.4 — the pre-extras figure — while the booking's Grand Total is 484.15.
+  Seen before and after invoicing. Marked `test.fail` in the lifecycle.
+- **Opening Update Extra Service too early blanks the page.** Clicked before
+  the ally/branch/car queries answer, the page throws
+  `undefined is not iterable` and renders nothing. Specs wait; not given a
+  failing spec, because whether a click lands early is timing.
 - **Edit Booking shows dates in Arabic** when opened with the Edit button on
   the English dashboard — the Pickup/Drop off fields and the whole date picker
   (month names, weekday names, digits). Opening the edit URL directly shows

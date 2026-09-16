@@ -25,14 +25,26 @@ export class BookingDetailsPage extends BasePage {
   readonly timeline = this.byRole('dialog').filter({ hasText: 'Booking TimeLine' });
   readonly addNoteButton = this.byRole('button', { name: 'Add Note' });
   readonly noteDialog = this.byRole('dialog').filter({ has: this.page.getByRole('button', { name: 'Add', exact: true }) });
+  readonly extraServicesButton = this.byRole('button', { name: 'Update Extra Service' });
+  readonly extraServicesDialog = this.byRole('dialog').filter({ has: this.page.getByRole('button', { name: 'Edit', exact: true }) });
 
   constructor(page: Page) {
     super(page);
   }
 
+  /**
+   * Opens the booking and waits until its actions are safe to use: the booking
+   * itself (`expectLoaded`), then the ally, branch and car it belongs to.
+   * Opening Update Extra Service before those arrive throws in the page and
+   * blanks it.
+   */
   async open(bookingId: string): Promise<void> {
+    const related = ['GetAllyCompanyQuery', 'Branch', 'GetCarProfile'].map((operation) =>
+      this.page.waitForResponse((r) => isOperation(r, operation)),
+    );
     await this.page.goto(`/cw/dashboard/bookings/${bookingId}`, { waitUntil: 'domcontentloaded' });
     await this.expectLoaded();
+    await Promise.all(related);
   }
 
   /**
@@ -127,6 +139,66 @@ export class BookingDetailsPage extends BasePage {
         return { note: note ?? '', status: status ?? '' };
       }),
     );
+  }
+
+  /**
+   * Ticks `services` in Update Extra Service (leaving the rest as they are)
+   * and waits for the API to accept them. Each checkbox is named
+   * `<service> <price>`, e.g. `GPS 5 SAR / Rent` or `yata Free`.
+   */
+  async addExtraServices(services: readonly string[]): Promise<void> {
+    await this.extraServicesButton.click();
+    for (const service of services) {
+      await this.extraService(service).check();
+    }
+    const response = this.page.waitForResponse((r) => isOperation(r, 'CustomerUpdateRentalExtraServices'));
+    await this.extraServicesDialog.getByRole('button', { name: 'Edit', exact: true }).click();
+    const body = await (await response).json();
+    const result = body.data?.customerUpdateRentalExtraServices;
+    expect(body.errors ?? result?.errors ?? [], 'CustomerUpdateRentalExtraServices errors').toEqual([]);
+    expect(result?.status, `CustomerUpdateRentalExtraServices answered ${JSON.stringify(body)}`).toBe('success');
+    await expect(this.extraServicesDialog).toBeHidden();
+  }
+
+  /** The services Update Extra Service opens with ticked, by name — closes it again. */
+  async chosenExtraServices(): Promise<string[]> {
+    await this.extraServicesButton.click();
+    const boxes = this.extraServicesDialog.getByRole('checkbox');
+    await expect(boxes.first()).toBeVisible();
+    const chosen: string[] = [];
+    for (const box of await boxes.all()) {
+      if (await box.isChecked()) {
+        const label = (await box.getAttribute('aria-label')) ?? (await box.evaluate((e) => (e as HTMLInputElement).labels?.[0]?.innerText ?? ''));
+        chosen.push(label.replace(/\s+(\d+(\.\d+)? SAR \/ (Rent|Day)|Free)$/, '').trim());
+      }
+    }
+    await this.extraServicesDialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(this.extraServicesDialog).toBeHidden();
+    return chosen;
+  }
+
+  private extraService(service: string): Locator {
+    return this.extraServicesDialog.getByRole('checkbox', {
+      name: new RegExp(`^${escapeRegExp(service)} (\\d+(\\.\\d+)? SAR / (Rent|Day)|Free)$`),
+    });
+  }
+
+  /**
+   * A figure from the details page's About Price card, e.g. `Due Amount` or an
+   * extra service's charge. Its lines read `<label> <amount>`.
+   */
+  async aboutPrice(label: string): Promise<number> {
+    const card = this.byRole('heading', { name: 'About Price' }).locator(
+      'xpath=ancestor::div[contains(@class, "booking-details-card")][1]',
+    );
+    // Label then amount only, so `Total` does not match `Total days (4)`.
+    const line = card
+      .getByRole('listitem')
+      .filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*-?\\d+(\\.\\d+)?\\s*$`) })
+      .first();
+    const numbers = (await line.innerText()).match(/-?\d+(\.\d+)?/g) ?? [];
+    expect(numbers.length, `About Price line "${label}"`).toBeGreaterThan(0);
+    return Number(numbers[numbers.length - 1]);
   }
 
   /**

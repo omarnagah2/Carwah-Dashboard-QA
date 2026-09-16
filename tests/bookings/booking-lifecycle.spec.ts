@@ -18,6 +18,9 @@ test.describe('booking lifecycle', () => {
   const { subtotal, vat, due } = priceFor(booking.days);
   /** The edit step extends the booking by a day. */
   const extended = { days: booking.days + 1, ...priceFor(booking.days + 1) };
+  /** After the handover, extra services are charged on top of the extended rental. */
+  const extras = booking.extraServices.reduce((sum, service) => sum + chargeFor(service, booking.days + 1), 0);
+  const withExtras = priceFor(booking.days + 1, extras);
   const editNote = 'Extended one day by the Carwah Dashboard automated test';
   let bookingId: string;
 
@@ -177,16 +180,51 @@ test.describe('booking lifecycle', () => {
     ]);
   });
 
+  test('adding extra services', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    expect(await details.chosenExtraServices()).toEqual([]);
+
+    await details.addExtraServices(booking.extraServices.map((service) => service.name));
+
+    await details.open(bookingId);
+    expect(await details.chosenExtraServices()).toEqual(booking.extraServices.map((service) => service.name));
+    await test.step('each is charged per rental or per day', async () => {
+      for (const service of booking.extraServices) {
+        expect(await details.aboutPrice(service.name), service.name).toBe(chargeFor(service, extended.days));
+      }
+    });
+    await test.step('the totals include them', async () => {
+      expect(await details.aboutPrice('Total')).toBe(withExtras.subtotal);
+      expect(await details.aboutPrice('Vat 15%')).toBe(withExtras.vat);
+      expect(Number(await details.detail('Price before tax'))).toBe(withExtras.subtotal);
+      expect(Number(await details.detail('Tax'))).toBe(withExtras.vat);
+      expect(Number(await details.detail('Grand Total'))).toBe(withExtras.due);
+    });
+  });
+
+  // Read-only, so an expected failure here does not hold up the steps after it.
+  test('the About Price due amount includes the extra services', async ({ page }) => {
+    test.fail(
+      true,
+      'Product bug: after extra services are added, About Price keeps the old Due Amount although its Total and VAT include them',
+    );
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+
+    expect(await details.aboutPrice('Due Amount')).toBe(withExtras.due);
+  });
+
   test('invoicing it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
 
-    await details.changeStatus('Invoiced', { grandTotal: extended.due });
+    await details.changeStatus('Invoiced', { grandTotal: withExtras.due });
 
     await details.open(bookingId);
     expect(await details.detail('Booking Status')).toBe('Invoiced');
     expect(await details.detail('Booking SubStatus')).toBe('Pending review');
-    expect(Number(await details.detail('Grand Total'))).toBe(extended.due);
+    expect(Number(await details.detail('Grand Total'))).toBe(withExtras.due);
   });
 
   test('closing it', async ({ page }) => {
@@ -202,11 +240,16 @@ test.describe('booking lifecycle', () => {
   });
 });
 
-/** What the forms charge for `days` of the pinned car: 15% VAT on top. */
-function priceFor(days: number): { subtotal: number; vat: number; due: number } {
-  const subtotal = testData.newBooking.dailyPrice * days;
+/** What is charged for `days` of the pinned car plus `extras`: 15% VAT on top. */
+function priceFor(days: number, extras = 0): { subtotal: number; vat: number; due: number } {
+  const subtotal = testData.newBooking.dailyPrice * days + extras;
   const vat = roundMoney(subtotal * 0.15);
   return { subtotal, vat, due: roundMoney(subtotal + vat) };
+}
+
+/** An extra service is charged once per rental or once per day. */
+function chargeFor(service: { price: number; per: 'Rent' | 'Day' }, days: number): number {
+  return service.per === 'Day' ? service.price * days : service.price;
 }
 
 function roundMoney(amount: number): number {

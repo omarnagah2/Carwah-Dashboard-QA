@@ -48,6 +48,14 @@ export const testData = {
      * so assignments never land on someone else's queue.
      */
     assignee: process.env.CARWAH_BOOKING_ASSIGNEE ?? 'Omar Nagah',
+    /**
+     * Extra services added after the handover: one charged once per rental,
+     * one per day. Both names are unique in the list (some others repeat).
+     */
+    extraServices: [
+      { name: 'GPS', price: 5, per: 'Rent' },
+      { name: 'Child Car Seat', price: 5, per: 'Day' },
+    ] as const,
   },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',
