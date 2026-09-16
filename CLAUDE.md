@@ -82,8 +82,16 @@ npm run typecheck
 - **Details page**: each fact is an `li.list_item_info` holding a label span and
   a value span with no space between them (`Booking StatusPending`), so values
   are read from the second span. Several labels repeat across sections.
-- Other actions on the details page — Add Note, Update Extra Service, Change Duration, Update Price, Add
-  Extra Fees, Recall Gateway — are untested. Timeline is read-only.
+- **The action bar depends on the status**, and before the booking loads it
+  shows a default set (with Add Note etc.) that is then replaced — read it
+  only after `expectLoaded`. Loaded, it offers:
+  - Pending, Confirmed: Change Status, Edit, Print, Timeline, Assign To;
+  - Car Received, Invoiced: Change Status, Add Note, Update Extra Service,
+    Change Duration, Update Price, Add Extra Fees, Print, Timeline, Extension
+    Requests, Assign To;
+  - Closed: the same without Change Status.
+- Untested so far: Update Extra Service, Change Duration, Update Price, Add
+  Extra Fees, Extension Requests, Recall Gateway, Print.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
 
@@ -93,8 +101,8 @@ npm run typecheck
   dedicated test customer `591593593` (Omar Nagah) — never Carwah UI's
   `534271861` — at Hegazy Cars / Hegazy Riyadh, Suzuki Dzire 2021 at 99/day,
   cash, the form's default three days from now (all in `testData.newBooking`),
-  assigns it to customer care, extends it by a day, then walks it Pending →
-  Confirmed → Car Received → Invoiced → Closed. The
+  assigns it to customer care, extends it by a day, confirms it, hands the
+  car over, adds a note, invoices and closes it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -158,6 +166,22 @@ npm run typecheck
   opened by URL they are English. So `setDropoffDate` reads no labels: it
   steps months by count with the English arrow buttons and matches the day in
   either digit set.
+
+### Notes (`BookingDetailsPage.addNote`, `rentalNotes`)
+
+- **Add Note** is only offered from Car Received on (see the action bar
+  above), so the spec notes the booking after the handover. Its dialog is one
+  textbox; **Add** is disabled until something is typed, and sends
+  `CustomerUpdateRentalNote { rentalId, note }`, answered with the rental's
+  whole note list; the toast says "note added successfully".
+- The **Rental Notes** card lists every note, oldest first, as
+  `<note> <status>` — the booking's status when it was written
+  (`pending`, `car_received`, `closed`). Notes saved from Edit Booking are
+  listed too. `created_by`/`created_at` come with the API but are not shown.
+  The notes arrive with `GetRentalDetailsQuery`, so they are there once the
+  page has loaded.
+- Find the card by `booking-details-card`: an XPath on `rct-block` also
+  matches its `rct-block-title` and returns the title alone (an empty list).
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 

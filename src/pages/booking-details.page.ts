@@ -23,6 +23,8 @@ export class BookingDetailsPage extends BasePage {
   readonly editButton = this.byRole('button', { name: 'Edit', exact: true });
   readonly timelineButton = this.byRole('button', { name: 'Timeline' });
   readonly timeline = this.byRole('dialog').filter({ hasText: 'Booking TimeLine' });
+  readonly addNoteButton = this.byRole('button', { name: 'Add Note' });
+  readonly noteDialog = this.byRole('dialog').filter({ has: this.page.getByRole('button', { name: 'Add', exact: true }) });
 
   constructor(page: Page) {
     super(page);
@@ -87,6 +89,44 @@ export class BookingDetailsPage extends BasePage {
     await this.timeline.getByRole('button', { name: 'Close' }).first().click();
     await expect(this.timeline).toBeHidden();
     return changes;
+  }
+
+  /**
+   * Adds a note through Add Note and waits for the API to keep it. The
+   * dialog's Add button stays disabled until something is typed.
+   */
+  async addNote(note: string): Promise<void> {
+    await this.addNoteButton.click();
+    const add = this.noteDialog.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await this.noteDialog.getByRole('textbox').fill(note);
+    const response = this.page.waitForResponse((r) => isOperation(r, 'CustomerUpdateRentalNote'));
+    await add.click();
+    const body = await (await response).json();
+    const result = body.data?.customerUpdateRentalNote;
+    expect(body.errors ?? result?.errors ?? [], 'CustomerUpdateRentalNote errors').toEqual([]);
+    expect(result?.rental, `CustomerUpdateRentalNote answered ${JSON.stringify(body).slice(0, 300)}`).toBeTruthy();
+    await expect(this.noteDialog).toBeHidden();
+  }
+
+  /**
+   * The Rental Notes section, oldest first. Each note is listed with the
+   * booking's status when it was written (`pending`, `confirmed`…) — notes
+   * saved from Edit Booking appear here too. They come with the booking
+   * (`GetRentalDetailsQuery`), so they are there once `expectLoaded` is.
+   */
+  async rentalNotes(): Promise<{ note: string; status: string }[]> {
+    // The card, not `rct-block`: that also matches its `rct-block-title`.
+    const section = this.byRole('heading', { name: 'Rental Notes' }).locator(
+      'xpath=ancestor::div[contains(@class, "booking-details-card")][1]',
+    );
+    const items = section.getByRole('listitem');
+    return items.evaluateAll((lis) =>
+      lis.map((li) => {
+        const [note, status] = [...li.querySelectorAll(':scope > span')].map((span) => (span as HTMLElement).innerText.trim());
+        return { note: note ?? '', status: status ?? '' };
+      }),
+    );
   }
 
   /**

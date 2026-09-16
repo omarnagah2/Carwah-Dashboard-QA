@@ -158,6 +158,25 @@ test.describe('booking lifecycle', () => {
     expect(await details.detail('Booking Status')).toBe('Car Received');
   });
 
+  // Add Note is only offered once the car is handed over, so the note comes
+  // after that.
+  test('noting it', async ({ page }) => {
+    const note = 'Note added by the Carwah Dashboard automated test';
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    // The note saved with the edit is listed with the others.
+    expect(await details.rentalNotes()).toEqual([{ note: editNote, status: 'pending' }]);
+
+    await details.addNote(note);
+
+    await details.open(bookingId);
+    // Each note keeps the status the booking had when it was written.
+    expect(await details.rentalNotes()).toEqual([
+      { note: editNote, status: 'pending' },
+      { note, status: 'car_received' },
+    ]);
+  });
+
   test('invoicing it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
