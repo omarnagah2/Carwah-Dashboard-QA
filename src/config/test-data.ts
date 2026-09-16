@@ -7,6 +7,8 @@
 export const testData = {
   /** Pre-prod dashboard, served over HTTP on a non-standard port. */
   baseUrl: process.env.DASHBOARD_URL ?? 'http://pre_dashboard.carwah.co:8880',
+  /** The GraphQL API the dashboard calls, on another host. */
+  apiUrl: process.env.DASHBOARD_API_URL ?? 'http://prebeta.carwah.co:2052/graphql',
   /**
    * Filter values with plenty of bookings on pre-prod. The ally and customer
    * are taken from the list itself; these two cannot be, because the list shows

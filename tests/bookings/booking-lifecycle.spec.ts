@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../src/fixtures/test';
 import { testData } from '../../src/config/test-data';
 import { AddBookingPage } from '../../src/pages/add-booking.page';
 import { BookingDetailsPage } from '../../src/pages/booking-details.page';
@@ -36,9 +36,15 @@ test.describe('booking lifecycle', () => {
   const withFee = priceFor(lengthenedDays, lengthenedExtras - discountAmount + booking.extraFee.amount);
   const editNote = 'Extended one day by the Carwah Dashboard automated test';
   let bookingId: string;
+  /** The Grand Total once the confirmed extension is added; the API prices it. */
+  let extendedTotal: number;
 
   test('an admin books a car for a customer', async ({ page }) => {
-    const today = new Date();
+    // The form's default pickup is two hours from now, Riyadh time, so late
+    // in the evening it falls on tomorrow.
+    const defaultPickup = new Date(Date.now() + 2 * 60 * 60 * 1000).toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Riyadh',
+    });
 
     const form = new AddBookingPage(page);
     await form.open();
@@ -60,7 +66,7 @@ test.describe('booking lifecycle', () => {
     bookingId = rental.id;
     test.info().annotations.push({ type: 'created booking', description: rental.id });
     console.log(`Created booking ${rental.id} for ${booking.customerMobile}`);
-    expect(rental.pickUpDate).toBe(isoDate(today));
+    expect(rental.pickUpDate).toBe(defaultPickup);
 
     const list = new BookingsPage(page);
     await test.step('the booking is listed as pending', async () => {
@@ -293,16 +299,108 @@ test.describe('booking lifecycle', () => {
     });
   });
 
+  // Extensions can only be requested while the car is with the customer.
+  test('refusing an extension request', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const before = await bookingTerms(details);
+
+    let requests = await details.extensionRequests();
+    expect(await requests.listed()).toEqual([]);
+    await requests.request(before.returnDate, addDays(before.returnDate, 2));
+
+    await details.open(bookingId);
+    await test.step('a pending request changes nothing yet', async () => {
+      expect(await details.detail('Booking SubStatus')).toBe('Pending extend');
+      expect(await bookingTerms(details)).toEqual(before);
+      // Duration and price are frozen while a request is open.
+      await expect(details.changeDurationButton).toHaveCount(0);
+      await expect(details.updatePriceButton).toHaveCount(0);
+    });
+
+    requests = await details.extensionRequests();
+    await requests.rejectPending();
+
+    await details.open(bookingId);
+    expect(await details.detail('Booking SubStatus')).toBe('Rejected extend');
+    expect(await bookingTerms(details)).toEqual(before);
+    requests = await details.extensionRequests();
+    expect(await requests.listed()).toEqual([
+      expect.objectContaining({ requestStatus: 'Rejected', paymentStatus: 'Not Paid' }),
+    ]);
+  });
+
+  test('extending it through a confirmed request', async ({ page }) => {
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const before = await bookingTerms(details);
+    const newReturn = addDays(before.returnDate, 2);
+
+    let requests = await details.extensionRequests();
+    // Priced by the API, not here: taking the booking past a week moves it to
+    // the weekly rate, and how the discounted figure comes out is the
+    // product's to explain (see CLAUDE.md).
+    const quote = await requests.request(before.returnDate, newReturn);
+    expect(quote.extensionDays).toBeGreaterThan(0);
+    expect(quote.totalRemainingPrice).toBeGreaterThan(0);
+
+    await details.open(bookingId);
+    requests = await details.extensionRequests();
+    await requests.confirmPending();
+
+    await details.open(bookingId);
+    await test.step('the booking takes on the extension', async () => {
+      expect(await details.detail('Booking SubStatus')).toBe('Booking extended');
+      expect((await details.detail('Return date and time')).slice(0, 10)).toBe(isoDate(newReturn));
+      expect(Number(await details.detail('Total rental days'))).toBe(before.days + quote.extensionDays);
+      expect(Number(await details.detail('Grand Total'))).toBe(roundMoney(before.grandTotal + quote.totalRemainingPrice));
+    });
+    extendedTotal = Number(await details.detail('Grand Total'));
+    await test.step('the request is confirmed and paid, newest first', async () => {
+      requests = await details.extensionRequests();
+      const [confirmed, rejected] = await requests.listed();
+      expect(confirmed).toMatchObject({
+        days: `${quote.extensionDays} day`,
+        dueValue: String(quote.totalRemainingPrice),
+        requestStatus: 'Confirmed',
+        paymentStatus: 'Paid',
+        paidBy: `customer - ${booking.customerName}`,
+      });
+      expect(rejected.requestStatus).toBe('Rejected');
+      expect(Number(confirmed.requestNo.split('-').pop())).toBe(Number(rejected.requestNo.split('-').pop()) + 1);
+    });
+  });
+
+  // Read-only, so an expected failure here does not hold up the steps after it.
+  test('the extension recalculation keeps the extra fee', async ({ page }) => {
+    test.fail(
+      true,
+      'Product bug: re-pricing the booking for its extended length drops the extra fee from the totals, though About Price still lists it',
+    );
+    const details = new BookingDetailsPage(page);
+    await details.open(bookingId);
+    const days = Number(await details.detail('Total rental days'));
+    const extras = booking.extraServices.reduce((sum, service) => sum + chargeFor(service, days), 0);
+    // Hegazy Cars is not on fixed extension prices, so the whole booking is
+    // re-priced for its new length; the suggested daily price still applies.
+    const expected = roundMoney(booking.suggestedPrice * days + extras + booking.extraFee.amount);
+
+    expect(await details.aboutPrice(booking.extraFee.name)).toBe(booking.extraFee.amount);
+    expect(Number(await details.detail('Price before tax'))).toBe(expected);
+  });
+
   test('invoicing it', async ({ page }) => {
     const details = new BookingDetailsPage(page);
     await details.open(bookingId);
 
-    await details.changeStatus('Invoiced', { grandTotal: withFee.due });
+    await details.changeStatus('Invoiced', { grandTotal: extendedTotal });
 
     await details.open(bookingId);
     expect(await details.detail('Booking Status')).toBe('Invoiced');
     expect(await details.detail('Booking SubStatus')).toBe('Pending review');
-    expect(Number(await details.detail('Grand Total'))).toBe(withFee.due);
+    expect(Number(await details.detail('Grand Total'))).toBe(extendedTotal);
+    const requests = await details.extensionRequests();
+    await expect(requests.addButton, 'extensions are for Car Received only').toHaveCount(0);
   });
 
   test('closing it', async ({ page }) => {
@@ -332,6 +430,15 @@ function chargeFor(service: { price: number; per: 'Rent' | 'Day' }, days: number
 
 function roundMoney(amount: number): number {
   return Math.round(amount * 100) / 100;
+}
+
+/** What an extension request changes once confirmed, read off the details page. */
+async function bookingTerms(details: BookingDetailsPage): Promise<{ returnDate: Date; days: number; grandTotal: number }> {
+  return {
+    returnDate: new Date((await details.detail('Return date and time')).slice(0, 10) + 'T00:00:00'),
+    days: Number(await details.detail('Total rental days')),
+    grandTotal: Number(await details.detail('Grand Total')),
+  };
 }
 
 function addDays(date: Date, days: number): Date {

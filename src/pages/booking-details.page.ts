@@ -2,6 +2,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { isOperation } from '../utils/graphql';
 import { BasePage } from './base.page';
 import { pickDate } from './date-time-picker.component';
+import { ExtensionRequests } from './extension-requests.component';
 
 export type BookingStatus = 'Confirmed' | 'Car Received' | 'Invoiced' | 'Closed';
 
@@ -35,6 +36,7 @@ export class BookingDetailsPage extends BasePage {
   readonly priceDialog = this.byRole('dialog').filter({ has: this.suggestedPrice });
   readonly addExtraFeesButton = this.byRole('button', { name: 'Add Extra Fees' });
   readonly feeDialog = this.byRole('dialog').filter({ has: this.page.getByRole('textbox', { name: 'Extra Fees Name' }) });
+  readonly extensionRequestsButton = this.byRole('button', { name: 'Extension Requests' });
 
   constructor(page: Page) {
     super(page);
@@ -55,6 +57,10 @@ export class BookingDetailsPage extends BasePage {
     await this.page.goto(`/cw/dashboard/bookings/${bookingId}`, { waitUntil: 'domcontentloaded' });
     await this.expectLoaded();
     await Promise.all(related);
+    // Branch is fetched again after those answer, and clicking before the
+    // later fetches settle still blanked the page once. The page does not
+    // poll, so the network going quiet marks the end of loading.
+    await this.page.waitForLoadState('networkidle');
   }
 
   /**
@@ -249,6 +255,13 @@ export class BookingDetailsPage extends BasePage {
     expect(body.errors ?? result?.errors ?? [], 'AddExtraFee errors').toEqual([]);
     expect(result?.status, `AddExtraFee answered ${JSON.stringify(body)}`).toBe('success');
     await expect(this.feeDialog).toBeHidden();
+  }
+
+  async extensionRequests(): Promise<ExtensionRequests> {
+    await this.extensionRequestsButton.click();
+    const requests = new ExtensionRequests(this.page);
+    await requests.expectOpen();
+    return requests;
   }
 
   /**

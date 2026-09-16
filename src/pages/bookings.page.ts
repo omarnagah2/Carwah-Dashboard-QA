@@ -24,7 +24,11 @@ export class BookingsPage extends BasePage {
   }
 
   async open(): Promise<void> {
+    const listed = this.page.waitForResponse((r) => isOperation(r, 'GetBookingsQuery'), { timeout: 30_000 });
     await this.page.goto('/cw/dashboard/bookings', { waitUntil: 'domcontentloaded' });
+    const response = await listed;
+    const body = await response.text();
+    expect(response.ok() && !body.includes('"errors"'), `GetBookingsQuery answered ${response.status()}: ${body.slice(0, 300)}`).toBe(true);
     await expect(this.rows.first()).toBeVisible();
   }
 
@@ -50,8 +54,9 @@ export class BookingsPage extends BasePage {
   }
 
   async goToPage(pageNumber: number): Promise<void> {
-    await this.reloadingList(() => this.byRole('button', { name: `Go to page ${pageNumber}` }).click());
-    await expect(this.byRole('button', { name: `page ${pageNumber}` })).toHaveAttribute('aria-current', 'true');
+    // Exact: with 2000+ pages, "Go to page 2" also names "Go to page 2001".
+    await this.reloadingList(() => this.byRole('button', { name: `Go to page ${pageNumber}`, exact: true }).click());
+    await expect(this.byRole('button', { name: `page ${pageNumber}`, exact: true })).toHaveAttribute('aria-current', 'true');
   }
 
   async setPageSize(size: 10 | 25 | 50 | 100): Promise<void> {

@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from '../../src/fixtures/test';
 import { testData } from '../../src/config/test-data';
 import { BookingDetailsPage } from '../../src/pages/booking-details.page';
 import { formatDate } from '../../src/pages/booking-filters.component';

@@ -17,8 +17,10 @@ tests/
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                bookings (list), booking-filters (panel), booking-details,
                booking-form (shared price summary), add-booking, edit-booking,
-               date-time-picker (the MUI picker behind every booking date field)
-src/utils/     graphql.ts (isOperation)
+               date-time-picker (the MUI picker behind every booking date field),
+               extension-requests (the dialog)
+src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
+src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts
 src/config/    test-data.ts (all data, env-overridable), auth.ts
 src/reporters/ environment-classifier (copied from Carwah UI)
 ```
@@ -27,7 +29,9 @@ src/reporters/ environment-classifier (copied from Carwah UI)
 
 ```bash
 npx playwright test
+npx playwright test --grep-invert "booking lifecycle"   # without creating a booking
 npm run typecheck
+npm run clean:cache                                       # drop the cached bundle
 ```
 
 ## Environment facts
@@ -54,6 +58,24 @@ npm run typecheck
   sessionStorage, so a plain `storageState` (`playwright/.auth/admin.json`) is
   enough — unlike Carwah UI, no session re-seeding fixture is needed.
 
+- **Import `test`/`expect` from `src/fixtures/test`**, not
+  `@playwright/test`: every context the suite opens (setup's probe context
+  too, via `prepareContext`) needs the two routes below.
+- **The bundle is cached on disk** (`.cache/static`). The dashboard is a CRA
+  build with content-hashed files under `/static/`, ~8.6 MB per page load —
+  one vendor chunk is 7 MB — and each test starts with an empty HTTP cache.
+  When pre-prod's throughput dipped that chunk missed the 30s navigation
+  timeout and `page.goto` failed before the page existed. Cached, setup went
+  from ~15s to ~7s. `npm run clean:cache` is always safe.
+- **The API rate-limits** (`429 {"message":"Too Many Requests"}`), and once
+  pages loaded fast the filter specs tripped it: the list rendered "No records
+  found!" with no tabs. **A request cannot be resent** — each carries a nonce
+  and a repeat gets `400 Duplicated: nonce`, even after a 429 — so
+  `paceApiCalls` holds requests back instead: at most
+  `API_REQUESTS_PER_10S` (default 20) per 10s across the worker, roughly the
+  rate the suite ran at before the cache and never saw a 429.
+  `BookingsPage.open` fails with the API's answer when the list query fails.
+
 ## Bookings (/cw/dashboard/bookings)
 
 - **The list and filter specs are read-only.** Pre-prod bookings are shared and
@@ -71,6 +93,8 @@ npm run typecheck
 - **Every list change is a `GetBookingsQuery`** on
   `prebeta.carwah.co:2052/graphql`; `reloadingList` waits for it so assertions
   read the new rows, not the old ones.
+- **Pagination buttons are matched exactly**: past 2000 pages
+  "Go to page 2" also names "Go to page 2001".
 - Page sizes are 10 / 25 / 50 / 100, on an unlabelled MUI select
   (`button "Without label"`).
 - **Columns are matched on header text content**, not `innerText`: the page
@@ -91,7 +115,9 @@ npm run typecheck
     Change Duration, Update Price, Add Extra Fees, Print, Timeline, Extension
     Requests, Assign To;
   - Closed: the same without Change Status.
-- Untested so far: Extension Requests, Recall Gateway, Print.
+- While an extension request is pending, Change Duration and Update Price
+  leave the bar; after a confirmed extension they do not come back.
+- Untested so far: Recall Gateway, Print.
 
 ## Booking lifecycle (`booking-lifecycle.spec.ts`)
 
@@ -103,7 +129,8 @@ npm run typecheck
   cash, the form's default three days from now (all in `testData.newBooking`),
   assigns it to customer care, extends it by a day, confirms it, hands the
   car over, adds a note and extra services, lengthens it by another day,
-  lowers its daily price, charges an extra fee, invoices and closes it. The
+  lowers its daily price, charges an extra fee, has an extension request
+  rejected and another confirmed, invoices and closes it. The
   steps are **serial and never retried** (a retry would book again). The id is
   printed and added as a `created booking` annotation.
 - **A run that fails midway leaves its booking in that status.** That does not
@@ -120,6 +147,9 @@ npm run typecheck
 - **Car options repeat**: one branch lists the same model at several prices,
   so a car is matched by name *and* `[Daily: N`. Their text content has double
   spaces and a line break the screen hides (`Dzire -  - 2021 |…\n [Daily: 99`).
+- **The default pickup is two hours from now, Riyadh time** (the return three
+  days after), so late in the evening the booking starts tomorrow; the spec
+  computes the expected date in `Asia/Riyadh`, not the machine's zone.
 - Choosing a car shows Extra Services, a coupon box, insurance, the **About
   price** summary (price per day, total days, VAT 15%, Due Amount) and the
   payment method (Cash by default). **Rent** sends `CreateBooking`
@@ -195,7 +225,10 @@ npm run typecheck
 - **Edit** sends `CustomerUpdateRentalExtraServices { allyExtraServices,
   branchExtraServices, rentalId }` (ids, split by who offers the service) and
   toasts "Rent has been edited successfully". Reopening shows them ticked.
-- A per-Rent service is charged once, a per-Day one times the rental days.
+- **Two ways a service is charged** (confirmed by the product): per Rent, once
+  for the whole booking, or per Day, times the rental days — so per-day
+  services follow every change of length (GPS stays 5; the child seat went
+  20 → 25 → 35/40 as the booking grew).
   About Price lists each (`Child Car Seat 20`, `GPS 5`), then their sum;
   its Total, VAT and the booking's Price before tax / Tax / Grand Total all
   include them. **Its Due Amount does not** (known issue below). Invoicing then
@@ -203,9 +236,11 @@ npm run typecheck
 - **Open the booking fully before acting.** `open()` also waits for
   `GetAllyCompanyQuery`, `Branch` and `GetCarProfile`: clicking Update Extra
   Service before they answer throws `undefined is not iterable` and blanks the
-  whole page (4 of 4 tries; 0 of 4 after waiting). Those waits get the
-  navigation timeout (30s): on a slow pre-prod the queries are not even sent
-  for several seconds.
+  whole page (4 of 4 tries; 0 of 4 after waiting). Branch is fetched again
+  after that, and a click before those later fetches blanked the page once
+  more, so `open()` finally waits for the network to go quiet (the page does
+  not poll). The query waits get the navigation timeout (30s): on a slow
+  pre-prod they are not even sent for several seconds.
 - `aboutPrice(label)` matches a line that is just label + amount, so `Total`
   does not pick up `Total days (4)`.
 
@@ -248,6 +283,53 @@ npm run typecheck
 - **On a closed booking the button is offered but the API refuses the fee**
   with `Invalid rental status` (a red toast), so the spec charges it before
   invoicing, while the booking is Car Received.
+
+### Extension requests (`ExtensionRequests`)
+
+- **Only a Car Received booking can be extended** (the product rule): the
+  Extension Requests dialog shows **Add** then, and not once the booking is
+  Invoiced or Closed (the spec checks Invoiced). Pending and Confirmed
+  bookings have no Extension Requests button at all.
+- **Add** appends a draft row: a `dropoff Date` field (the MUI picker, in
+  English here, opening on the day after the current drop-off and **keeping
+  the current time of day**, not the booking's), a recommended price field, a
+  Paid/Not Paid select (never sent) and **Create request**, enabled once a
+  date is picked. Picking sends `RentalExtensionRequestPrice`, whose
+  `extensionDays` and `totalRemainingPrice` the row shows. Create sends
+  `CreateRentalDateExtensionRequest`.
+- A pending request sets the SubStatus to **Pending extend** and changes
+  nothing else yet. Its row has **Confirm** and **Reject** icons
+  (`label[title=…]`; Confirm's icon carries a `disabled` attribute that does
+  nothing).
+  - **Reject** acts at once, no confirmation:
+    `RejectRentalDateExtensionRequest` → SubStatus **Rejected extend**, row
+    Rejected, no actions left, booking unchanged.
+  - **Confirm** asks (SweetAlert "Are you sure you want to confirm this
+    extension?" → Yes): `ConfirmRentalDateExtensionRequest` → SubStatus
+    **Booking extended**; the return date, days (+ extensionDays) and Grand
+    Total (+ totalRemainingPrice) move; the row reads Confirmed, **Paid**,
+    paid by `customer - <name>` even though Paid was never chosen.
+- Requests are numbered `<booking no.>-2`, `-3`…, newest first. A new request
+  is allowed after a rejected one, but **not until a confirmed extension's
+  period has begun** — Add is still offered, and the API answers "A new
+  extension can only be requested after the current confirmed extension
+  period begins."
+- **How an extension is priced** (from the product): from the car's daily,
+  weekly and monthly prices. Unless the ally is on fixed extension prices, a
+  booking that an extension takes to a week (or to 30 days) is **re-priced
+  from the start** at the weekly (monthly) rate and the customer pays only
+  the difference; a customer with free days sees the extension at 0 until
+  they run out. On fixed prices (`isExtendFixedPrice`, "Extend - rental
+  fixed price" on the ally's page) the booking keeps the rate it started on.
+  **Hegazy Cars is not fixed** (`isExtendFixedPrice: false`), so the
+  lifecycle booking, taken from 5 to 7 days, is re-priced weekly: 88/day with
+  the 9.09% special discount is still 80.
+- The spec takes days and price from the API's quote, since the time of day
+  (and so the rounding) depends on when it runs, and checks the booking adds
+  exactly that. It does not rederive the figure — the fee bug below makes it
+  wrong by design.
+- A row's text content runs its cells together (`CashPendingNot Paid`), so
+  rows are matched by cell, not by text.
 
 ### Changing status (`BookingDetailsPage.changeStatus`)
 
@@ -338,6 +420,13 @@ moment one starts passing — then drop the mark.
   the ally/branch/car queries answer, the page throws
   `undefined is not iterable` and renders nothing. Specs wait; not given a
   failing spec, because whether a click lands early is timing.
+- **Re-pricing for an extension drops the extra fees.** Taking the lifecycle
+  booking from 5 to 7 days (re-priced weekly) quotes a difference of 172.5 =
+  150 + VAT, i.e. new 600 − old 450: the new total leaves out the 20 fee the
+  old one included. Afterwards About Price still lists the fee (560 + extras
+  40 + fee 20) but shows Total 600 and Due 690 instead of 620 and 713, and
+  the booking's Grand Total is 690 (booking 21620). Marked `test.fail` in the
+  lifecycle.
 - **Add Extra Fees is offered on closed bookings that cannot take a fee.**
   The dialog opens and accepts input, and only the API's
   `Invalid rental status` says otherwise.

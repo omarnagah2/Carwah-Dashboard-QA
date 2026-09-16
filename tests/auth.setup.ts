@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { test as setup } from '@playwright/test';
+import { prepareContext, test as setup } from '../src/fixtures/test';
 import { authFile } from '../src/config/auth';
 import { testData } from '../src/config/test-data';
 import { SigninPage } from '../src/pages/signin.page';
@@ -14,6 +14,7 @@ setup('sign in as admin', async ({ browser, page }) => {
 
   if (!process.env.FORCE_LOGIN && existsSync(authFile)) {
     const stored = await browser.newContext({ storageState: authFile, baseURL: testData.baseUrl });
+    await prepareContext(stored);
     const probe = await stored.newPage();
     await probe.goto('/cw/dashboard/Statistics', { waitUntil: 'domcontentloaded' });
     // A rejected session is redirected to /signin once the app has checked it.

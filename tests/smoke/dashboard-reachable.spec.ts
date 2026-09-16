@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../src/fixtures/test';
 
 test('a signed-in admin is not sent back to sign in', async ({ page }) => {
   const response = await page.goto('/', { waitUntil: 'domcontentloaded' });
