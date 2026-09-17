@@ -1,10 +1,10 @@
-import type { Page, Request } from '@playwright/test';
 import { expect, test } from '../../src/fixtures/test';
 import { testData } from '../../src/config/test-data';
 import { CustomerDetailsPage } from '../../src/pages/customer-details.page';
 import { CustomersPage, type ListedCustomer } from '../../src/pages/customers.page';
 import { EditCustomerPage } from '../../src/pages/edit-customer.page';
 import { isOperation } from '../../src/utils/graphql';
+import { recordMutations } from '../../src/utils/mutations';
 
 const { testCustomerMobile, broadNationalId } = testData.customers;
 
@@ -17,18 +17,6 @@ const USER_TYPES: Record<string, string> = {
   gulf_citizen: 'Gulf citizen',
   visitor: 'Visitor',
 };
-
-/** Records every mutation the page sends, so read-only specs can prove they wrote nothing. */
-function recordMutations(page: Page): string[] {
-  const mutations: string[] = [];
-  page.on('request', (request: Request) => {
-    const body = request.url().includes('/graphql') ? request.postDataJSON() : null;
-    if (typeof body?.query === 'string' && body.query.trimStart().startsWith('mutation')) {
-      mutations.push(body.operationName);
-    }
-  });
-  return mutations;
-}
 
 /**
  * Read-only: the specs look up the bookings' dedicated test customer and

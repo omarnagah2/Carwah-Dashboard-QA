@@ -111,6 +111,15 @@ export const testData = {
       customerClass: { label: 'Gold member', sent: 'gold_member', shown: 'Gold Member' },
     },
   },
+  /**
+   * The partners specs read the bookings' ally; the other filter values come
+   * from the list itself.
+   */
+  companies: {
+    knownAlly: { id: process.env.CARWAH_ALLY_ID ?? '156039', name: 'Hegazy Cars' },
+    /** A class few partners have, so the filter visibly narrows the list. */
+    rareClass: 'D',
+  },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',
     password: process.env.DASHBOARD_ADMIN_PASSWORD ?? '',

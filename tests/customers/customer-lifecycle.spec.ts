@@ -7,6 +7,7 @@ import { CustomerDetailsPage } from '../../src/pages/customer-details.page';
 import { CustomersPage } from '../../src/pages/customers.page';
 import { EditCustomerPage } from '../../src/pages/edit-customer.page';
 import { isOperation } from '../../src/utils/graphql';
+import { recordMutations } from '../../src/utils/mutations';
 
 /** How the details page shows a date: YYYY-MM-DD. */
 function isoDate(date: Date): string {
@@ -32,13 +33,7 @@ function dayMonthYear(date: Date, separator: string): string {
 test('add customer: an empty form is refused before anything is sent', async ({ page }) => {
   const form = new AddCustomerPage(page);
   await form.open();
-  const mutations: string[] = [];
-  page.on('request', (request) => {
-    const body = request.url().includes('/graphql') ? request.postDataJSON() : null;
-    if (typeof body?.query === 'string' && body.query.trimStart().startsWith('mutation')) {
-      mutations.push(body.operationName);
-    }
-  });
+  const mutations = recordMutations(page);
 
   await form.saveButton.click();
 
@@ -248,13 +243,7 @@ test.describe('customer lifecycle', () => {
     const form = new EditCustomerPage(page);
     await page.goto(`/cw/dashboard/customers/${customerId}/edit`, { waitUntil: 'domcontentloaded' });
     await form.expectLoaded();
-    const mutations: string[] = [];
-    page.on('request', (request) => {
-      const body = request.url().includes('/graphql') ? request.postDataJSON() : null;
-      if (typeof body?.query === 'string' && body.query.trimStart().startsWith('mutation')) {
-        mutations.push(body.operationName);
-      }
-    });
+    const mutations = recordMutations(page);
 
     // 21 characters: one over the limit.
     await form.field('Last Name').fill('Abcdefghijklmnopqrstu');

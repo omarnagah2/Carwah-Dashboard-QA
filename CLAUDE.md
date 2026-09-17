@@ -15,9 +15,10 @@ tests/
 ├── bookings/       bookings-list, bookings-filters (read-only),
 │                   recall-gateway (clicks Recall Gateway on one customer booking),
 │                   booking-lifecycle (writes: one booking per run, closed at the end)
-└── customers/      customers-list, customers-filters (read-only),
-                    customer-lifecycle (writes: adds one customer per run,
-                    edits it, deletes it at the end)
+├── customers/      customers-list, customers-filters (read-only),
+│                   customer-lifecycle (writes: adds one customer per run,
+│                   edits it, deletes it at the end)
+└── companies/      companies-list, companies-filters (read-only: partners)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                list (shared list base), filter-panel (shared Filter panel),
                detail-list (the details pages' label/value items),
@@ -26,9 +27,12 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                date-time-picker (the MUI picker behind every booking date field),
                extension-requests (the dialog),
                customers (list), customer-filters, customer-details,
-               customer-form (shared by add-customer and edit-customer)
+               customer-form (shared by add-customer and edit-customer),
+               companies (partners list), company-filters, company-details,
+               company-form (add and edit, read only)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
-src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts
+src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
+               mutations.ts (recordMutations: prove a spec wrote nothing)
 src/config/    test-data.ts (all data, env-overridable), auth.ts
 src/reporters/ environment-classifier (copied from Carwah UI)
 ```
@@ -242,6 +246,54 @@ npm run clean:cache                                       # drop the cached bund
   **Every edit also logs `license_front_image` as changed**, because the form
   sends back a freshly signed URL for the same file.
 - Explored with customers 1342–1350, all deleted.
+
+## Partners (/cw/dashboard/companies)
+
+- The sidebar's partners page is **"Ally Companies"**. **The specs are
+  read-only**: partners are real companies bookings depend on. They never
+  save a form or flip a row's **active switch** — a MUI switch in Actions
+  (`input[name="<id>"]`) that changes the partner at once. Creating and
+  editing are not covered; they need the owner's go-ahead first (four
+  required images, and the lifecycle's ally is Hegazy Cars).
+- **The list shows every partner** (218 today, newest id first), unlike
+  customers, via `AllyCompanies { page, limit }`. The table is found by its
+  `Manager Name` header (plain "ID" would match other headers). Columns: `#`,
+  ID, Ally Name, Company Logo, Manager Name, phone Number, Status, Class,
+  Email, Actions (switch, **Edit**, **Timeline**). **Inactive partners read
+  "inActive"** in the Status column (the filter says "Inactive").
+- **Filters** (`CompanyFilters`): `#email`, `#managerName` (placeholder "Manger
+  Name"), the Ally Name (typed; searches the server), Class (A–D) and Status
+  react-selects, and the mobile. Search sends `email`, `managerName`
+  (partial), `allyCompanyIds: ["156039"]`, `allyClasses: ["D"]`,
+  `isActive`, `phoneNumber: "966…"`; the URL keeps them (Class as
+  `allyClass`, Status as `isActive: "0"`). After Ally Name is cleared later
+  searches still send `allyCompanyIds: []`. **Clear sends no query** and
+  shows the cached first page again.
+- **Details** (`/companies/<id>`, "Ally Details", from `AllyCompany { id }`):
+  `li.list_item_info` items — **`ally.id`** and **`ally.status`** (untranslated
+  keys, known issue), Ally Name, Email Address, Commercial Registration,
+  Mobile number., Ally Class, Manager Name, Ally Rating (only when set) —
+  then logo, commercial registration and licence images, Ally/Branch
+  location, and **Ally Settings**: Enable Online Payment, B2B (Carwah
+  business), **Not B2C**, Extend - rental fixed price, each with an icon
+  that is a red ✗ when off (`CompanyDetailsPage.setting`). A ✗ beside "Not
+  B2C" therefore means the partner *does* serve B2C (`isB2c: true`).
+- **Edit** (`/companies/<id>/edit`, "Edit Company") and **Create New Company**
+  (`/companies/add`, "Add Company") share a form with four tabs: **Basic
+  Information** (names Ar/En, manager, the mobile as the local number,
+  email, Class, commercial registration, Commision Rate, Rate and its
+  value, four required images — commercial registration, licence, logo,
+  bank card — and handover-in-another-city options), **Extra Service** (a
+  table of every service: active, required, titles, pay type, show for,
+  value), **ApI Integration** ("Is Api Integrated") and **Settings** (the
+  same three checkboxes as above — online payment is not among them — and
+  allowed car types per age). **Save is disabled until something changes**,
+  on both; Cancel returns to the list. Edit loads `GetAllyCompanyQuery`,
+  `Rates`, `ExtraServices`, `VehicleTypes` and `Areas`.
+- **Timeline** opens "Company TimeLine" from `AllyCompanyAudits { id }`:
+  `Company Id :<id>`, then per entry the user and time and **old Data / new
+  Data** lists (extra services listed field by field). Hegazy Cars has
+  `update` entries whose old and new data are both empty.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -605,6 +657,10 @@ moment one starts passing — then drop the mark.
   or last name is refused on Add and Edit Customer with "Min. 1, Max. 100
   character"; the real limit is 20. Marked `test.fail` in the customer
   lifecycle.
+- **Ally Details shows two untranslated labels**: `ally.id` and
+  `ally.status`. Marked `test.fail` in the partners list.
+- **Inactive partners read "inActive"** in the partners list's Status
+  column. Not given a failing spec; the specs expect the list's spelling.
 - **Every customer edit logs the licence image as changed.** The form sends
   the image back as a newly signed S3 URL, so the Timeline shows a Driver
   License change on edits that did not touch it.
