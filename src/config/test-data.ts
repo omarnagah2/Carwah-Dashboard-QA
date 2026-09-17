@@ -1,3 +1,5 @@
+import type { NewCustomer } from '../pages/add-customer.page';
+
 /**
  * Everything a spec needs to know about the environment lives here, and every
  * value can be overridden from the environment so a run can be pointed
@@ -80,6 +82,26 @@ export const testData = {
      */
     broadNationalId: '1',
     agency: { name: 'mh-agency', id: 199 },
+    /**
+     * A fresh customer for the add-customer spec, which deletes it at the
+     * end. Mobile, email and national ID must be unused, so they carry the
+     * run's time: mobiles are `59` + 7 digits (the owner's choice), national
+     * IDs `100` + the same 7.
+     */
+    newCustomer(): NewCustomer {
+      const stamp = String(Date.now()).slice(-7);
+      return {
+        firstName: 'Automated',
+        lastName: `Customer ${stamp}`,
+        email: `auto.customer.${stamp}@example.com`,
+        mobile: `59${stamp}`,
+        nationalId: `100${stamp}`,
+        nationalIdExpiry: new Date(2030, 2, 15),
+        licenseExpiry: new Date(2030, 3, 16),
+        birthDate: new Date(1995, 4, 10),
+        licenseImage: 'src/fixtures/files/driver-license.png',
+      };
+    },
   },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',

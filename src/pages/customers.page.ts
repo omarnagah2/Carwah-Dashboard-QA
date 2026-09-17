@@ -73,6 +73,26 @@ export class CustomersPage extends ListPage {
     return (await response.json()).data.customerAudits;
   }
 
+  /**
+   * The delete icon asks "Are You Sure ? You Want Delete This Customer"
+   * (Cancel / delete); delete sends `DeleteCustomer { input: { userId } }`
+   * and reloads the list. Deleting is soft: the details page still opens, with
+   * Status "Deleted", and searches no longer find the customer.
+   */
+  async deleteCustomer(customerId: string): Promise<void> {
+    await this.action(customerId, 'delete').click();
+    const dialog = this.byRole('dialog').filter({ hasText: 'You Want Delete This Customer' });
+    const deleted = this.page.waitForResponse((r) => isOperation(r, 'DeleteCustomer'), { timeout: 30_000 });
+    await this.reloadingList(async () => {
+      await dialog.getByRole('button', { name: 'delete', exact: true }).click();
+      const response = await deleted;
+      expect(response.request().postDataJSON().variables).toEqual({ input: { userId: Number(customerId) } });
+      const body = await response.json();
+      expect(body.data?.deleteCustomer?.status, `DeleteCustomer answered ${JSON.stringify(body)}`).toBe('success');
+    });
+    await expect(dialog).toBeHidden();
+  }
+
   private rowOf(customerId: string): Locator {
     return this.rows.filter({ has: this.page.getByRole('link', { name: customerId, exact: true }) });
   }

@@ -15,7 +15,9 @@ tests/
 ├── bookings/       bookings-list, bookings-filters (read-only),
 │                   recall-gateway (clicks Recall Gateway on one customer booking),
 │                   booking-lifecycle (writes: one booking per run, closed at the end)
-└── customers/      customers-list, customers-filters (read-only)
+└── customers/      customers-list, customers-filters (read-only),
+                    customer-lifecycle (writes: adds one customer per run,
+                    deletes it at the end)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                list (shared list base), filter-panel (shared Filter panel),
                detail-list (the details pages' label/value items),
@@ -24,7 +26,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                date-time-picker (the MUI picker behind every booking date field),
                extension-requests (the dialog),
                customers (list), customer-filters, customer-details,
-               edit-customer
+               customer-form (shared by add-customer and edit-customer)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts
 src/config/    test-data.ts (all data, env-overridable), auth.ts
@@ -134,10 +136,10 @@ npm run clean:cache                                       # drop the cached bund
 
 ## Customers (/cw/dashboard/customers)
 
-- **The specs are read-only.** They look up the bookings' dedicated test
-  customer (`591593593`, customer 202) by mobile and read everything else
-  from the dashboard; nothing is saved, deleted or blocked. Adding, editing
-  and deleting customers are not covered yet.
+- **The list and filter specs are read-only.** They look up the bookings'
+  dedicated test customer (`591593593`, customer 202) by mobile and read
+  everything else from the dashboard. Only `customer-lifecycle.spec.ts`
+  writes (below). Saving an edit is not covered yet.
 - **The list is empty until a search names a customer.** On load it sends
   `GetUsersList { page, limit, isActive: null, type: "customers" }` and gets
   `totalCount: 0` — "No records found!", no table. Only a search with a
@@ -182,6 +184,42 @@ npm run clean:cache                                       # drop the cached bund
   Hijri dates, licence number, class, three images, **Save** and **Cancel**
   (back to the list, nothing sent — the spec checks no mutation went out).
   **Add customer** opens `/customers/add`, the same form empty.
+
+### Adding and deleting (`customer-lifecycle.spec.ts`)
+
+- **This spec writes to pre-prod: every run adds one real customer and
+  deletes it at the end** (agreed with the suite's owner). The steps are
+  serial and never retried; if one fails, `afterAll` still deletes the
+  customer. The id is printed and added as a `created customer` annotation.
+- **The data is generated per run** (`testData.customers.newCustomer()`):
+  mobile `59` + the last 7 digits of the time (the owner's choice), national
+  ID `100` + the same 7, email `auto.customer.<7>@example.com`, name
+  `Automated Customer <7>`. The first step checks the mobile is unused.
+- **Required**: First Name, Last Name, Email, mobile, National ID, National ID
+  and Driver license expiry (Gregorian), Date of Birth (Gregorian) and the
+  driver licence image. Saving empty shows 9 "Required field" (the Hijri
+  twins of the dates are flagged too, though they fill themselves in),
+  "Please enter right mobile number" and "This image is required", and sends
+  nothing. Defaults: Male, Citizen, Unblocked, no agencies, Active, Basic
+  member.
+- The date fields open an **MUI date picker on a year list**, then months,
+  then days, closed with **Ok** (`pickCalendarDate`); the field reads
+  DD-MM-YYYY and its Hijri twin fills in. **The Driver license Hijri field
+  carries the Gregorian placeholder**, so date fields are taken as the first
+  match of their placeholder.
+- **Save uploads the image first**: `ImageUpload { image: <data URL>,
+  topic: "licenseFrontImage", isSecured: true }` → `secureUploadImage` with an
+  S3 URL; then `AddCustomerMutation` with that URL, the dates as
+  DD/MM/YYYY and the mobile as `966…` → `addCustomer { errors: [], status:
+  "success", user { id } }`. The page returns to the (empty) list, no toast.
+  The image is `src/fixtures/files/driver-license.png`, a 32×32 PNG.
+- A new customer's details lack Wallet balance and Successful Bookings.
+- **Delete** (the list's `delete` icon) asks "Are You Sure ? You Want Delete
+  This Customer" (Cancel / delete) → `DeleteCustomer { input: { userId } }`
+  → `status: "success"`, and the list reloads without them. **It is a soft
+  delete**: searches no longer find the customer, but the details page still
+  opens (`customerProfile.isDeleted: true`) with Status **Deleted**.
+- Explored with customers 1342 and 1343, both deleted.
 
 ## Printing (`BookingDetailsPage.print`)
 
