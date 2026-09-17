@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, type Response } from '@playwright/test';
+import { isOperation } from '../utils/graphql';
 import { BasePage } from './base.page';
 
 export type CompanyTab = 'Basic Information' | 'Extra Service' | 'ApI Integration' | 'Settings';
@@ -6,7 +7,7 @@ export type CompanyTab = 'Basic Information' | 'Extra Service' | 'ApI Integratio
 /**
  * The partner form behind Create New Company (/companies/add) and Edit
  * (/companies/<id>/edit): four tabs, then Save — disabled until something
- * changes — and Cancel. Specs only read it.
+ * changes — and Cancel. Only the suite's own partner is ever saved.
  */
 export class CompanyFormPage extends BasePage {
   readonly addHeading = this.byRole('heading', { name: 'Add Company', level: 2 });
@@ -43,10 +44,59 @@ export class CompanyFormPage extends BasePage {
     return this.byRole('checkbox', { name: label, exact: true });
   }
 
+  /**
+   * The Class and Rate react-selects have no labels of their own, so each is
+   * found by the text beside it (`Class *`, `Rate *`).
+   */
+  async choose(field: 'Class' | 'Rate', option: string): Promise<void> {
+    const dropdowns = this.page.locator('div.dropdown-select');
+    // The label goes away once a value is chosen, so the dropdown is pinned by
+    // its position while it still shows it.
+    const index = (await dropdowns.allInnerTexts()).findIndex((text) => text.trim().startsWith(`${field} *`));
+    expect(index, `a dropdown labelled "${field} *"`).toBeGreaterThanOrEqual(0);
+    const dropdown = dropdowns.nth(index);
+    await dropdown.click();
+    await this.page
+      .locator('[id*="-option-"]')
+      .filter({ hasText: new RegExp(`^\\s*${option}\\s*$`) })
+      .first()
+      .click();
+    await expect(dropdown).toContainText(option);
+  }
+
   async openEdit(companyId: string): Promise<void> {
     await this.page.goto(`/cw/dashboard/companies/${companyId}/edit`, { waitUntil: 'domcontentloaded' });
     await expect(this.editHeading).toBeVisible({ timeout: 30_000 });
     await expect(this.field('Name (En)')).not.toHaveValue('', { timeout: 30_000 });
+  }
+
+  /**
+   * Save sends the whole form as `UpdateAllyCompany` (with `allyCompanyId`,
+   * the images as the URLs they were loaded with, and every extra service)
+   * and returns to the partners list. Returns what was sent.
+   */
+  async save(): Promise<Record<string, unknown>> {
+    const response = await this.saving();
+    const body = await response.json();
+    const result = body.data?.updateAllyCompany;
+    expect(body.errors ?? result?.errors, `UpdateAllyCompany answered ${JSON.stringify(body)}`).toEqual([]);
+    expect(result.status).toBe('success');
+    await expect(this.page).toHaveURL(/\/cw\/dashboard\/companies$/);
+    return response.request().postDataJSON().variables;
+  }
+
+  /** Save when the API is expected to refuse; returns its error messages. */
+  async saveExpectingErrors(): Promise<string[]> {
+    const body = await (await this.saving()).json();
+    const errors = [...(body.errors ?? []), ...(body.data?.updateAllyCompany?.errors ?? [])];
+    expect(errors, 'the API refused the save').not.toEqual([]);
+    return errors.map((error: { message?: string } | string) => (typeof error === 'string' ? error : (error.message ?? '')));
+  }
+
+  private async saving(): Promise<Response> {
+    const saved = this.page.waitForResponse((r) => isOperation(r, 'UpdateAllyCompany'), { timeout: 30_000 });
+    await this.saveButton.click();
+    return saved;
   }
 
   /** Leaves without saving; the form returns to the partners list. */

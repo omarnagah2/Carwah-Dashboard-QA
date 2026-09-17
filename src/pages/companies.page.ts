@@ -68,6 +68,24 @@ export class CompaniesPage extends ListPage {
     return (await response.json()).data.allyCompanyAudits;
   }
 
+  /**
+   * Flips a partner's active switch, which sends
+   * `ActivateAllyCompany { allyCompanyId, isActive }` at once, with no
+   * confirmation. Only ever called on a partner the suite created.
+   */
+  async setActive(companyId: string, isActive: boolean): Promise<void> {
+    const toggle = this.activeSwitch(companyId);
+    await expect(toggle).toBeChecked({ checked: !isActive });
+    const changed = this.page.waitForResponse((r) => isOperation(r, 'ActivateAllyCompany'), { timeout: 30_000 });
+    await toggle.click();
+    const response = await changed;
+    expect(response.request().postDataJSON().variables).toEqual({ allyCompanyId: companyId, isActive });
+    const body = await response.json();
+    expect(body.data?.activateAllyCompany?.errors ?? [], `ActivateAllyCompany answered ${JSON.stringify(body)}`).toEqual([]);
+    expect(body.data.activateAllyCompany.status).toBe('success');
+    await expect(toggle).toBeChecked({ checked: isActive });
+  }
+
   /** The Status column's words; inactive is spelled "inActive" there. */
   static statusLabel(isActive: boolean): string {
     return isActive ? 'Active' : 'inActive';

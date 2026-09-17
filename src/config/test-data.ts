@@ -1,3 +1,4 @@
+import type { NewCompany } from '../pages/add-company.page';
 import type { NewCustomer } from '../pages/add-customer.page';
 
 /**
@@ -119,6 +120,38 @@ export const testData = {
     knownAlly: { id: process.env.CARWAH_ALLY_ID ?? '156039', name: 'Hegazy Cars' },
     /** A class few partners have, so the filter visibly narrows the list. */
     rareClass: 'D',
+    /**
+     * The suite's own partner, added by `add-company.spec.ts` (156072 was the
+     * first). Everything after creation is exercised on it, so ordinary runs
+     * add no partners. It is left **inactive** between runs.
+     */
+    testAlly: {
+      id: process.env.CARWAH_TEST_ALLY_ID ?? '156073',
+      /** Names are limited to 20 characters, the API says so for the manager. */
+      baseline: { managerName: 'Automation Manager', commissionRate: 5, isB2b: false },
+      edited: { managerName: 'Automation Mgr 2', commissionRate: 7, isB2b: true },
+    },
+    /**
+     * A fresh partner for the add-partner spec. Partners cannot be deleted,
+     * so the spec deactivates it at the end and each run leaves one inactive
+     * `Automated Ally …` behind. The mobile, email and commercial
+     * registration carry the run's time so they stay unused.
+     */
+    newCompany(): NewCompany {
+      const stamp = String(Date.now()).slice(-6);
+      return {
+        arName: `شريك اختبار ${stamp}`,
+        enName: `Automated Ally ${stamp}`,
+        managerName: 'Automation Manager',
+        phoneNumber: `59${stamp}0`,
+        email: `auto.ally.${stamp}@example.com`,
+        allyClass: 'D',
+        commercialRegistration: `10${stamp}`,
+        commissionRate: 5,
+        rate: { name: 'Average', value: 3 },
+        image: 'src/fixtures/files/driver-license.png',
+      };
+    },
   },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',

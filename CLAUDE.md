@@ -18,7 +18,10 @@ tests/
 ├── customers/      customers-list, customers-filters (read-only),
 │                   customer-lifecycle (writes: adds one customer per run,
 │                   edits it, deletes it at the end)
-└── companies/      companies-list, companies-filters (read-only: partners)
+└── companies/      companies-list, companies-filters (read-only: partners),
+                    company-edit (writes, but only to the suite's own partner),
+                    add-company (tagged @creates-partner: left out of ordinary
+                    runs, since a partner cannot be deleted)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                list (shared list base), filter-panel (shared Filter panel),
                detail-list (the details pages' label/value items),
@@ -29,7 +32,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                customers (list), customer-filters, customer-details,
                customer-form (shared by add-customer and edit-customer),
                companies (partners list), company-filters, company-details,
-               company-form (add and edit, read only)
+               company-form (shared by add-company and edit), add-company
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -42,6 +45,7 @@ src/reporters/ environment-classifier (copied from Carwah UI)
 ```bash
 npx playwright test
 npx playwright test --grep-invert "booking lifecycle"   # without creating a booking
+RUN_CREATE_PARTNER=1 npx playwright test --grep @creates-partner  # add a partner
 npm run typecheck
 npm run clean:cache                                       # drop the cached bundle
 ```
@@ -249,12 +253,13 @@ npm run clean:cache                                       # drop the cached bund
 
 ## Partners (/cw/dashboard/companies)
 
-- The sidebar's partners page is **"Ally Companies"**. **The specs are
-  read-only**: partners are real companies bookings depend on. They never
-  save a form or flip a row's **active switch** — a MUI switch in Actions
-  (`input[name="<id>"]`) that changes the partner at once. Creating and
-  editing are not covered; they need the owner's go-ahead first (four
-  required images, and the lifecycle's ally is Hegazy Cars).
+- The sidebar's partners page is **"Ally Companies"**. **The list and filter
+  specs are read-only**: existing partners are real companies bookings
+  depend on, so they never save a form or flip a row's **active switch** — a
+  MUI switch in Actions (`input[name="<id>"]`) that changes the partner at
+  once. The two specs that write only ever touch **the suite's own partner**,
+  `testData.companies.testAlly` (156073 today; 156072 was the first): see
+  below.
 - **The list shows every partner** (218 today, newest id first), unlike
   customers, via `AllyCompanies { page, limit }`. The table is found by its
   `Manager Name` header (plain "ID" would match other headers). Columns: `#`,
@@ -294,6 +299,59 @@ npm run clean:cache                                       # drop the cached bund
   `Company Id :<id>`, then per entry the user and time and **old Data / new
   Data** lists (extra services listed field by field). Hegazy Cars has
   `update` entries whose old and new data are both empty.
+
+### Adding a partner (`add-company.spec.ts`, tagged `@creates-partner`)
+
+- **Partners cannot be deleted** — no delete action, none in the API — so
+  every run of this spec would leave one behind. It is therefore **kept out
+  of ordinary runs** by its tag (`grepInvert` in the config) and run on
+  purpose: `RUN_CREATE_PARTNER=1 npx playwright test --grep
+  @creates-partner`. Everything after creation is covered by
+  `company-edit.spec.ts` on the partner already created, so ordinary runs add
+  nothing. (The owner offered database access for cleanup; not used yet.)
+- It adds one real partner and **deactivates** it at the end. Serial, never
+  retried; `afterAll` deactivates it even when a step fails.
+- **The data is generated per run** (`testData.companies.newCompany()`):
+  names Ar/En, manager `Automation Manager`, mobile `59` + 6 digits + `0`,
+  `auto.ally.<6>@example.com`, class D, commercial registration `10<6>`,
+  commission 5, rate Average / 3, and one PNG for all four images.
+- **Save is disabled until the form is filled**, then uploads the four images
+  (`ImageUpload`, the plain — not secure — path, answered with
+  `/uploads/image_upload/image/<n>/image.png`) and sends
+  `CreateAllyCompanyMutation` with their URLs, every default
+  (`isB2c: true`, B2B/online pay/fixed price/API/handover false) and
+  `allyExtraServicesAttributes` for the services ticked by default →
+  `createAllyCompany { errors: [], status: "success", allyCompany { id } }`.
+  The page returns to the list, no toast; the new partner is listed first.
+- **Its mobile field starts empty**, unlike the customer form's `+966`.
+  Class and Rate are react-selects labelled `Class *` / `Rate *`; the label
+  goes away once a value is chosen, so `choose` pins them by position first.
+- **Deactivating** is the row's switch: `ActivateAllyCompany
+  { allyCompanyId, isActive }`, no confirmation, answered `status:
+  "success"`; the Status column then reads "inActive" and the Inactive filter
+  finds the partner.
+- Explored with partner 156072, created and deactivated.
+
+### Editing a partner (`company-edit.spec.ts`)
+
+- Works only on `testAlly`, and **puts it back as it found it**: it
+  activates the partner, saves one edit (manager name, Commision Rate and
+  the B2B checkbox — `testAlly.edited`), checks the details, the list and the
+  timeline, then saves `testAlly.baseline` again and deactivates it. So the
+  partner stays inactive between runs and nothing else on pre-prod changes.
+  The spec fails loudly if the partner is missing or not an
+  `Automated Ally …`; point `CARWAH_TEST_ALLY_ID` elsewhere to move it.
+- **Save sends the whole form** as `UpdateAllyCompany` — `allyCompanyId`,
+  every field, the images as the URLs they were loaded with (no new upload),
+  `handoverCitiesAttributes` and every extra service — answered
+  `updateAllyCompany { errors: [], status: "success" }`, and returns to the
+  list with no toast.
+- **A manager name over 20 characters is refused by the API**
+  (`Manager name is too long (maximum is 20 characters)`) **and the page
+  shows nothing at all** — no toast, no field error, the form just stays.
+  Marked `test.fail` (known issue below).
+- The timeline's `update` entry names the changed columns
+  (`manager_name`, `commision_rate`, `is_b2b`) with old and new values.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -657,6 +715,10 @@ moment one starts passing — then drop the mark.
   or last name is refused on Add and Edit Customer with "Min. 1, Max. 100
   character"; the real limit is 20. Marked `test.fail` in the customer
   lifecycle.
+- **A refused partner save is silent.** Saving Edit Company with a manager
+  name over 20 characters is rejected by the API, but the dashboard shows no
+  toast and no field error — the form simply stays as it was. Marked
+  `test.fail` in the partner edit spec.
 - **Ally Details shows two untranslated labels**: `ally.id` and
   `ally.status`. Marked `test.fail` in the partners list.
 - **Inactive partners read "inActive"** in the partners list's Status

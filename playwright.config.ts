@@ -29,6 +29,10 @@ export default defineConfig({
   // One worker, as in Carwah UI: concurrent runs overload the shared backend.
   workers: 1,
   reporter: [['html'], ['list'], ['./src/reporters/environment-classifier.ts']],
+  // Adding a partner cannot be undone — partners have no delete — so that one
+  // spec is left out unless it is asked for:
+  // `RUN_CREATE_PARTNER=1 npx playwright test --grep @creates-partner`.
+  grepInvert: process.env.RUN_CREATE_PARTNER ? undefined : /@creates-partner/,
   use: {
     baseURL: testData.baseUrl,
     trace: 'on-first-retry',
