@@ -14,6 +14,13 @@ function isoDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/** One `CustomerAudits` entry; the data keys are the database's (`last_name`). */
+interface Audit {
+  action: string;
+  oldData: Record<string, unknown>;
+  newData: Record<string, unknown>;
+}
+
 /** How the form fills a date field and the API is sent it. */
 function dayMonthYear(date: Date, separator: string): string {
   return isoDate(date).split('-').reverse().join(separator);
@@ -58,6 +65,8 @@ test.describe('customer lifecycle', () => {
   test.describe.configure({ mode: 'serial', retries: 0 });
 
   const customer = testData.customers.newCustomer();
+  const { edit } = testData.customers;
+  const editedLastName = edit.lastName;
   const mobile = `966${customer.mobile}`;
   const name = `${customer.firstName} ${customer.lastName}`;
   let customerId = '';
@@ -166,6 +175,94 @@ test.describe('customer lifecycle', () => {
     await expect(form.dateField('Driver license Expiry Date - Gregorian')).toHaveValue(dayMonthYear(customer.licenseExpiry, '-'));
     await expect(form.dateField('Date Of Birth - Gregorian')).toHaveValue(dayMonthYear(customer.birthDate, '-'));
     await form.cancel();
+  });
+
+  test('edit the customer', async () => {
+    const form = new EditCustomerPage(page);
+    await page.goto(`/cw/dashboard/customers/${customerId}/edit`, { waitUntil: 'domcontentloaded' });
+    await form.expectLoaded();
+
+    await form.field('Middle Name').fill(edit.middleName);
+    await form.field('Last Name').fill(editedLastName);
+    await form.field('Company Name').fill(edit.companyName);
+    await form.choose('Basic member', edit.customerClass.label);
+    const sent = await form.save();
+
+    expect(sent).toMatchObject({
+      userId: customerId,
+      middleName: edit.middleName,
+      lastName: editedLastName,
+      companyName: edit.companyName,
+      customerClass: edit.customerClass.sent,
+      // Untouched fields go out as they were.
+      firstName: customer.firstName,
+      email: customer.email,
+      mobile,
+      nid: customer.nationalId,
+      dob: dayMonthYear(customer.birthDate, '/'),
+      status: 'citizen',
+      isActive: true,
+    });
+  });
+
+  test('the details and the form show the edit', async () => {
+    const details = new CustomerDetailsPage(page);
+    await details.open(customerId);
+
+    expect(await details.detail('Middle Name')).toBe(edit.middleName);
+    expect(await details.detail('Last Name')).toBe(editedLastName);
+    expect(await details.detail('Company Name')).toBe(edit.companyName);
+    expect(await details.detail('Customer Class')).toBe(edit.customerClass.shown);
+    expect(await details.detail('First name')).toBe(customer.firstName);
+
+    await details.edit();
+    const form = new EditCustomerPage(page);
+    await form.expectLoaded();
+    await expect(form.field('Middle Name')).toHaveValue(edit.middleName);
+    await expect(form.field('Company Name')).toHaveValue(edit.companyName);
+    expect(await form.dropdownValues()).toContain(edit.customerClass.label);
+    await form.cancel();
+  });
+
+  test('the timeline records the creation and the edit', async () => {
+    const customers = new CustomersPage(page);
+    await customers.open();
+    await customers.findByMobile(customer.mobile);
+
+    const audits = (await customers.openTimeline(customerId)) as Audit[];
+
+    console.log(`Timeline: ${audits.map((a) => `${a.action} ${Object.keys(a.newData).join(',')}`).join(' | ')}`);
+    expect(audits).toContainEqual(
+      expect.objectContaining({ action: 'create', newData: expect.objectContaining({ mobile, last_name: customer.lastName }) }),
+    );
+    const change = audits.find((a) => a.action !== 'create');
+    expect(change, 'an entry for the edit').toBeDefined();
+    expect(change!.oldData).toMatchObject({ last_name: customer.lastName });
+    expect(change!.newData).toMatchObject({ last_name: editedLastName, middle_name: edit.middleName, company_name: edit.companyName });
+    await expect(customers.timelineDialog).toContainText(`Customer ID :${customerId}`);
+    await customers.timelineDialog.getByRole('button', { name: 'Close' }).first().click();
+  });
+
+  test('a name over the limit is refused with the real limit', async () => {
+    test.fail(true, 'Names are limited to 20 characters, but the message says "Min. 1, Max. 100 character"');
+    const form = new EditCustomerPage(page);
+    await page.goto(`/cw/dashboard/customers/${customerId}/edit`, { waitUntil: 'domcontentloaded' });
+    await form.expectLoaded();
+    const mutations: string[] = [];
+    page.on('request', (request) => {
+      const body = request.url().includes('/graphql') ? request.postDataJSON() : null;
+      if (typeof body?.query === 'string' && body.query.trimStart().startsWith('mutation')) {
+        mutations.push(body.operationName);
+      }
+    });
+
+    // 21 characters: one over the limit.
+    await form.field('Last Name').fill('Abcdefghijklmnopqrstu');
+    await form.saveButton.click();
+
+    await expect(form.field('Last Name')).toHaveAttribute('aria-invalid', 'true');
+    expect(mutations, 'nothing is saved').toEqual([]);
+    await expect(page.getByText(/Max\. 20 character/)).toBeVisible({ timeout: 3_000 });
   });
 
   test('delete the customer', async () => {

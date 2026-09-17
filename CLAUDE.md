@@ -17,7 +17,7 @@ tests/
 │                   booking-lifecycle (writes: one booking per run, closed at the end)
 └── customers/      customers-list, customers-filters (read-only),
                     customer-lifecycle (writes: adds one customer per run,
-                    deletes it at the end)
+                    edits it, deletes it at the end)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
                list (shared list base), filter-panel (shared Filter panel),
                detail-list (the details pages' label/value items),
@@ -139,7 +139,7 @@ npm run clean:cache                                       # drop the cached bund
 - **The list and filter specs are read-only.** They look up the bookings'
   dedicated test customer (`591593593`, customer 202) by mobile and read
   everything else from the dashboard. Only `customer-lifecycle.spec.ts`
-  writes (below). Saving an edit is not covered yet.
+  writes (below), and only to the customer it adds.
 - **The list is empty until a search names a customer.** On load it sends
   `GetUsersList { page, limit, isActive: null, type: "customers" }` and gets
   `totalCount: 0` — "No records found!", no table. Only a search with a
@@ -219,7 +219,29 @@ npm run clean:cache                                       # drop the cached bund
   → `status: "success"`, and the list reloads without them. **It is a soft
   delete**: searches no longer find the customer, but the details page still
   opens (`customerProfile.isDeleted: true`) with Status **Deleted**.
-- Explored with customers 1342 and 1343, both deleted.
+- **Names are limited to 20 characters** (first, middle and last, on both
+  forms; digits and spaces are fine), but the message says "Min. 1, Max. 100
+  character" (known issue below). A generated last name is `Customer
+  <7 digits>` (16), so the edit sets a fixed, short one.
+- **Editing** (`EditCustomerPage.save`): the spec changes the middle and last
+  names, company and customer class (Basic → Gold member) of the customer it
+  added. The form's react-selects have no labels, so `choose(current,
+  option)` finds one by the value it shows. **Wait for the dates** before
+  saving: they (and their Hijri twins) fill in after the names, and an early
+  Save is refused with "Required field". Save sends `EditCustomerMutation`
+  — the whole form plus `userId`, the licence image as the signed URL it was
+  loaded with (no new upload) — answered `editCustomer { errors: [],
+  status: "success" }`, and returns to the list, no toast. A refused form
+  sends nothing; `save()` fails with the message and the invalid fields.
+- Changing the type to **Resident** brings its own rules: the national ID
+  must "start with 2, and consist of 10 digits", and another field becomes
+  required.
+- **Timeline** (`CustomerAudits`, newest first): `create` with every field,
+  then `update` with `oldData`/`newData` of the changed ones in database
+  names (`last_name`, `middle_name`, `company_name`, `customer_class`).
+  **Every edit also logs `license_front_image` as changed**, because the form
+  sends back a freshly signed URL for the same file.
+- Explored with customers 1342–1350, all deleted.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -578,6 +600,14 @@ moment one starts passing — then drop the mark.
 - **The Agency Name filter is ignored.** The choice is written into the page URL
   (`agency: [{ id: "199", ... }]`) but not into `GetBookingsQuery`'s variables,
   so the total is unchanged. The field is also shown twice.
+
+- **The customer name limit is misreported.** A 21-character first, middle
+  or last name is refused on Add and Edit Customer with "Min. 1, Max. 100
+  character"; the real limit is 20. Marked `test.fail` in the customer
+  lifecycle.
+- **Every customer edit logs the licence image as changed.** The form sends
+  the image back as a newly signed S3 URL, so the Timeline shows a Driver
+  License change on edits that did not touch it.
 
 ## Open questions for the product
 

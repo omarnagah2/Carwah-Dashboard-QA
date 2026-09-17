@@ -92,6 +92,7 @@ export const testData = {
       const stamp = String(Date.now()).slice(-7);
       return {
         firstName: 'Automated',
+        // Names are limited to 20 characters (see CLAUDE.md).
         lastName: `Customer ${stamp}`,
         email: `auto.customer.${stamp}@example.com`,
         mobile: `59${stamp}`,
@@ -101,6 +102,13 @@ export const testData = {
         birthDate: new Date(1995, 4, 10),
         licenseImage: 'src/fixtures/files/driver-license.png',
       };
+    },
+    /** What the lifecycle changes through Edit Customer. */
+    edit: {
+      lastName: 'Customer Edited',
+      middleName: 'Edited',
+      companyName: 'Automation Co',
+      customerClass: { label: 'Gold member', sent: 'gold_member', shown: 'Gold Member' },
     },
   },
   admin: {
