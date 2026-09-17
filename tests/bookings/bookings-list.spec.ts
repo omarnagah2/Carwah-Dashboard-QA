@@ -24,13 +24,15 @@ test.describe('bookings list', () => {
     expect(await bookings.total()).toBeGreaterThan(0);
   });
 
-  test('a status tab lists only bookings in that status', async () => {
+  test('the Pending tab lists everything awaiting a decision', async () => {
     await bookings.selectStatus('Pending');
 
     const statuses = await bookings.column('Booking Status');
     expect(statuses.length).toBeGreaterThan(0);
+    // By design it holds pending bookings and bookings with a pending
+    // extension request (`Car Received PENDING EXTEND`), whatever their status.
     for (const status of statuses) {
-      expect(status).toMatch(/^Pending\b/);
+      expect(status).toMatch(/^Pending\b|\bPENDING EXTEND$/i);
     }
     expect(await bookings.total()).toBe(await bookings.statusCount('Pending'));
   });

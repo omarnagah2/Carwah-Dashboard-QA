@@ -12,16 +12,21 @@ dashboard gives a reason not to.
 tests/
 ├── auth.setup.ts   # admin sign-in, once per run; every spec reuses it
 ├── smoke/          dashboard-reachable
-└── bookings/       bookings-list, bookings-filters (read-only),
-                    recall-gateway (clicks Recall Gateway on one customer booking),
-                    booking-lifecycle (writes: one booking per run, closed at the end)
+├── bookings/       bookings-list, bookings-filters (read-only),
+│                   recall-gateway (clicks Recall Gateway on one customer booking),
+│                   booking-lifecycle (writes: one booking per run, closed at the end)
+└── customers/      customers-list, customers-filters (read-only)
 src/pages/     page objects (BasePage copied from Carwah UI), signin,
+               list (shared list base), filter-panel (shared Filter panel),
+               detail-list (the details pages' label/value items),
                bookings (list), booking-filters (panel), booking-details,
                booking-form (shared price summary), add-booking, edit-booking,
                date-time-picker (the MUI picker behind every booking date field),
-               extension-requests (the dialog)
+               extension-requests (the dialog),
+               customers (list), customer-filters, customer-details,
+               edit-customer
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
-src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts
+src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts
 src/config/    test-data.ts (all data, env-overridable), auth.ts
 src/reporters/ environment-classifier (copied from Carwah UI)
 ```
@@ -94,6 +99,10 @@ npm run clean:cache                                       # drop the cached bund
   (Pending / Pending Extend / Pending Review), so the name is anchored. The
   selected tab and page are kept in the URL
   (`?{"status":"pending",...}#page=2`).
+- **The Pending tab holds everything awaiting a decision** (confirmed by the
+  product): pending bookings *and* bookings with a pending extension request,
+  e.g. `Car Received PENDING EXTEND` (`status: "pending"` returns both).
+  Pending Extend also has its own tab.
 - **Every list change is a `GetBookingsQuery`** on
   `prebeta.carwah.co:2052/graphql`; `reloadingList` waits for it so assertions
   read the new rows, not the old ones.
@@ -122,6 +131,57 @@ npm run clean:cache                                       # drop the cached bund
 - While an extension request is pending, Change Duration and Update Price
   leave the bar; after a confirmed extension they do not come back.
 - Every action on the details page is covered.
+
+## Customers (/cw/dashboard/customers)
+
+- **The specs are read-only.** They look up the bookings' dedicated test
+  customer (`591593593`, customer 202) by mobile and read everything else
+  from the dashboard; nothing is saved, deleted or blocked. Adding, editing
+  and deleting customers are not covered yet.
+- **The list is empty until a search names a customer.** On load it sends
+  `GetUsersList { page, limit, isActive: null, type: "customers" }` and gets
+  `totalCount: 0` — "No records found!", no table. Only a search with a
+  customer name, email, national ID or mobile returns anyone; the dropdowns
+  alone (Type, Customer Status, Status, Agency Name) also return nobody.
+  **This is by design** (confirmed by the product): listing every customer
+  would be too much data. So the dropdown specs combine each with a national ID
+  fragment (`testData.customers.broadNationalId`, ~230 customers).
+- The list uses the same pieces as bookings — `ListPage` (table picked by its
+  `Customer ID` header, `Total Results`, pagination, page size) and
+  `FilterPanel` (react-selects found by placeholder: `Type`,
+  `Customer Status`, `Status`, `Agency Name`). Text fields: `#customerName`,
+  `#email`, `#nid`, and `#input-tel` for the mobile.
+- Search sends: `customerName` **and** `name` (the same value), `email`,
+  `nid` (partial: `1` matches hundreds), `mobile: '966…'`,
+  `customerStatuses: ['resident']` (Type), `blockingStatus: 'blocked' |
+  'partially_blocked'` (Customer Status), `isActive` (Status),
+  `agencyIds: [199]`. The API's rows carry `status`,
+  `customerProfile.blockingStatus`, `isActive` and
+  `agencyCustomerProfiles[].agencyId`, which the specs check.
+- **Clear sends no query**: it empties the panel, drops the filter from the
+  URL and shows the empty list the page already has (Apollo's cached
+  unfiltered answer). Pages keep the filter (`page: 2` with the same `nid`).
+- Columns: `#`, Customer ID, Customer Name (with an empty
+  `title="UnVerified via Yakeen"` badge), Customer phone number, Customer
+  email, Bookings (a link to `/bookings?{"userId":"<id>"}`, the bookings list
+  for that customer), Created date (`May 28, 2024 10:39 AM`), Customer
+  Status (Active/Inactive), Actions: **Edit** (the edit page), **delete**
+  (`<i title="delete">`, never clicked) and **Timeline** (a "Customer
+  TimeLine" dialog filled by `CustomerAudits { id }` — empty for customer
+  202, "No records found!").
+- **Details** (`/customers/<id>`, `GetCustomerDetailsQuery { id }` and
+  `UserWallet`): the same `li.list_item_info` items as bookings — First name,
+  Last Name, Email address, Mobile Number, User Type, Status, Date of Birth,
+  Gender, Driver license expiry, Customer Class, Wallet balance, Successful
+  Bookings, National ID, Age — then the profile and licence images and
+  **Edit Customer**. Customer 202 has 131 bookings but "Successful Bookings 3".
+- **Edit** (`/customers/<id>/edit`) is the Add Customer form filled in: names,
+  email, the mobile **disabled** (`+966 591 593 593`, named by its
+  placeholder `512345678*`), company, react-selects without labels (gender,
+  type, blocking, agencies, active), national ID and version, Gregorian and
+  Hijri dates, licence number, class, three images, **Save** and **Cancel**
+  (back to the list, nothing sent — the spec checks no mutation went out).
+  **Add customer** opens `/customers/add`, the same form empty.
 
 ## Printing (`BookingDetailsPage.print`)
 

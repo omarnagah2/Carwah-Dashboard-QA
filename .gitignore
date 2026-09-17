@@ -5,3 +5,4 @@ test-results/
 playwright/.auth/
 .env
 dist/
+scripts/explore*

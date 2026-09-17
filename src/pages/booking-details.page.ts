@@ -1,6 +1,8 @@
 import { expect, type Locator, type Page, type Response } from '@playwright/test';
 import { isOperation } from '../utils/graphql';
+import { escapeRegExp } from '../utils/text';
 import { BasePage } from './base.page';
+import { detailValue, readDetail } from './detail-list.component';
 import { pickDate } from './date-time-picker.component';
 import { ExtensionRequests } from './extension-requests.component';
 
@@ -77,25 +79,12 @@ export class BookingDetailsPage extends BasePage {
     await expect(this.mainDetailsHeading).toBeVisible();
     // Given the navigation timeout: API pacing can hold a page's queries for
     // several seconds after a busy one.
-    await expect(this.detailValue('Booking Status')).not.toBeEmpty({ timeout: 30_000 });
+    await expect(detailValue(this.page, 'Booking Status')).not.toBeEmpty({ timeout: 30_000 });
   }
 
-  /**
-   * Details are `li.list_item_info` items holding a label span and a value
-   * span, with nothing between them (`Booking StatusPending`), so the value is
-   * read from its own span. Some labels appear in more than one section
-   * (Booking Totals repeats the dates, Status is both car and customer), so the
-   * first one wins.
-   */
+  /** A fact from the details lists; Status is both car and customer, so the first wins. */
   async detail(label: string): Promise<string> {
-    return (await this.detailValue(label).innerText()).trim();
-  }
-
-  private detailValue(label: string): Locator {
-    const labelSpan = this.page.locator('span.text-align-localized', {
-      hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`),
-    });
-    return this.page.locator('li.list_item_info').filter({ has: labelSpan }).first().locator('span').nth(1);
+    return readDetail(this.page, label);
   }
 
   async edit(): Promise<void> {
@@ -440,8 +429,4 @@ export class BookingDetailsPage extends BasePage {
     expect(body.errors ?? body.data?.[payload]?.errors ?? [], `${operation} errors`).toEqual([]);
     expect(body.data?.[payload]?.status, `${operation} answered ${JSON.stringify(body)}`).toBe('success');
   }
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

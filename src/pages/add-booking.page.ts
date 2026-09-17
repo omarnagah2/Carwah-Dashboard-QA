@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { isOperation } from '../utils/graphql';
+import { escapeRegExp } from '../utils/text';
 import { BookingFormPage } from './booking-form.page';
 
 /** What `CreateBooking` answers with, as far as specs read it. */
@@ -103,8 +104,4 @@ export class AddBookingPage extends BookingFormPage {
     const match = typeof option === 'string' ? new RegExp(`^\\s*${escapeRegExp(option)}\\s*$`) : option;
     await this.page.locator('[id*="-option-"]').filter({ hasText: match }).first().click();
   }
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

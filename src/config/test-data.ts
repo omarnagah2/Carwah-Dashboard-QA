@@ -67,6 +67,20 @@ export const testData = {
       { name: 'Child Car Seat', price: 5, per: 'Day' },
     ] as const,
   },
+  /**
+   * The customers specs look up the bookings' dedicated test customer (by
+   * mobile) and read everything else about them from the dashboard.
+   */
+  customers: {
+    testCustomerMobile: process.env.CARWAH_BOOKING_CUSTOMER ?? '591593593',
+    /**
+     * The list only answers searches that name a customer, so the dropdown
+     * filters are combined with a national ID fragment that matches a couple
+     * of hundred customers, blocked, inactive and agency ones among them.
+     */
+    broadNationalId: '1',
+    agency: { name: 'mh-agency', id: 199 },
+  },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',
     password: process.env.DASHBOARD_ADMIN_PASSWORD ?? '',
