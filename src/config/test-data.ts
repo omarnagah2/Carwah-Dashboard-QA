@@ -159,6 +159,61 @@ export const testData = {
     ally: 'Hegazy Cars',
     city: 'Riyadh',
   },
+  /**
+   * The cars specs read the lifecycle's car — Suzuki Dzire 2021 at Hegazy
+   * Riyadh, 99/88/77 a day/week/month — and filter by its facts.
+   */
+  cars: {
+    knownCar: {
+      id: process.env.CARWAH_CAR_ID ?? '17180',
+      make: 'Suzuki',
+      model: 'Dzire',
+      year: 2021,
+      branch: 'Hegazy Riyadh',
+      ally: 'Hegazy Cars',
+      dailyPrice: 99,
+    },
+  },
+  /**
+   * The Add Booking scenarios on the refactored page (/bookings/add2). Each
+   * books for the bookings' test customer and is closed at once. Handover
+   * uses Al-nagah and Rent To Own uses Asmak in Umluj, as agreed with the
+   * owner — Hegazy offers neither.
+   */
+  addBooking: {
+    customerMobile: process.env.CARWAH_BOOKING_CUSTOMER ?? '591593593',
+    standard: { city: 'Riyadh', ally: 'Hegazy Cars', branch: 'Hegazy Riyadh', car: 'Suzuki - Dzire', dailyPrice: 99, carId: '17180' },
+    /** A Hegazy Riyadh car that offers Full insurance (and Standard). */
+    fullInsurance: { city: 'Riyadh', ally: 'Hegazy Cars', branch: 'Hegazy Riyadh', car: 'Proton - Gen 2', dailyPrice: 100, carId: '17190' },
+    /** One service charged once per rental and one per day. */
+    extraServices: [
+      { name: 'GPS', price: 5, per: 'Rent' },
+      { name: 'Yelo Shield', price: 5, per: 'Day' },
+    ] as const,
+    delivery: { place: 'Kingdom Centre Riyadh', lat: 24.7111837, lng: 46.673401 },
+    /** A daily price below the list price, typed into "Suggested price per day". */
+    suggestedPrice: 80,
+    handover: {
+      pickupCity: 'Riyadh',
+      dropoffCity: 'Jeddah',
+      ally: 'Al-nagah',
+      branch: 'Haleef Z',
+      car: 'Audi - Asmaa Model',
+      dailyPrice: 100,
+      dropoffBranch: 'Haleef B',
+      /** What the form suggests for this handover. */
+      fee: 30,
+      /** A closed handover booking (Haleef Z → Haleef B) the known-issue spec reads. */
+      bookedExample: process.env.CARWAH_HANDOVER_BOOKING ?? '21700',
+    },
+    rentToOwn: { city: 'Umluj', ally: 'Asmak', branch: 'umluj', car: 'Proton - Gen 2', dailyPrice: 20, carId: '17091' },
+    /**
+     * Another Asmak rent-to-own car, for the spec that never books: booking
+     * the one above deactivates it until someone reactivates it (see
+     * CLAUDE.md), so the no-booking spec must not depend on it.
+     */
+    rentToOwnPreview: { city: 'Umluj', ally: 'Asmak', branch: 'umluj', car: 'fashion - Dress', dailyPrice: 10 },
+  },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',
     password: process.env.DASHBOARD_ADMIN_PASSWORD ?? '',

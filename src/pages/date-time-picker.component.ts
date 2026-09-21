@@ -25,10 +25,14 @@ export async function pickDate(page: Page, field: Locator, current: Date, date: 
   }
   const day = String(date.getDate());
   const arabicDay = [...day].map((digit) => ARABIC_DIGITS[Number(digit)]).join('');
-  await picker
-    .locator('button:has(p):not([class*="hidden"])')
-    .filter({ hasText: new RegExp(`^(${day}|${arabicDay})$`) })
-    .click();
+  // Disabled days (past pickups) can carry the same number as the one wanted,
+  // and while a month slides in the old and new months are both in the grid,
+  // so the click waits for a single match.
+  const dayButton = picker
+    .locator('button:has(p):not([class*="hidden"]):not([class*="dayDisabled"])')
+    .filter({ hasText: new RegExp(`^(${day}|${arabicDay})$`) });
+  await expect(dayButton).toHaveCount(1);
+  await dayButton.click();
   await picker.getByRole('button', { name: 'OK' }).click();
   await expect(picker).toBeHidden();
 }

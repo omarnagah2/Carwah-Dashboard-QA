@@ -14,11 +14,15 @@ tests/
 ├── smoke/          dashboard-reachable
 ├── bookings/       bookings-list, bookings-filters (read-only),
 │                   recall-gateway (clicks Recall Gateway on one customer booking),
-│                   booking-lifecycle (writes: one booking per run, closed at the end)
+│                   booking-lifecycle (writes: one booking per run, closed at the end),
+│                   add-booking-scenarios (writes: 10 bookings on the new Add
+│                   Booking page, each closed at once; plus checks and known
+│                   issues that book nothing)
 ├── customers/      customers-list, customers-filters (read-only),
 │                   customer-lifecycle (writes: adds one customer per run,
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
+├── cars/           cars-list, cars-filters (read-only)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -28,13 +32,15 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                detail-list (the details pages' label/value items),
                bookings (list), booking-filters (panel), booking-details,
                booking-form (shared price summary), add-booking, edit-booking,
+               add-booking-v2 (the refactored /bookings/add2),
                date-time-picker (the MUI picker behind every booking date field),
                extension-requests (the dialog),
                customers (list), customer-filters, customer-details,
                customer-form (shared by add-customer and edit-customer),
                companies (partners list), company-filters, company-details,
                company-form (shared by add-company and edit), add-company,
-               branches (list), branch-filters, branch-details
+               branches (list), branch-filters, branch-details,
+               cars (list), car-filters, car-details
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -409,6 +415,61 @@ npm run clean:cache                                       # drop the cached bund
   This once had Cancel misreported here as broken — the owner confirmed by
   hand that it works, and tracing the overlay's class proved it.
 
+## Cars (/cw/dashboard/cars, "Listing Cars")
+
+- **Read-only.** Cars belong to real partners and the lifecycle rents one
+  (17180, Suzuki Dzire 2021 at Hegazy Riyadh, 99/88/77 —
+  `testData.cars.knownCar`), so no spec saves a form, flips a row's
+  availability switch, or runs a **bulk action** — the Actions menu above the
+  list offers **delete** and **Update Cars** for the ticked rows; the spec
+  opens it and picks nothing.
+- **The list shows every car** (16,780 today, newest id first) via
+  `AllyCars { page, limit }` — the same query as the branches' Show Cars.
+  Page sizes 10 / 20 / 40 / 80 / 100. **There is no id column**: the first
+  header is the bulk-select checkbox (named ""), then `#`, Car
+  (`<make> <model> <year>`, a link to the car), Ally Name, Branch Name,
+  Transmission, Acriss Code, City Name, Car Count, Car Availability Status,
+  Rent(Day,Week,Month) (`100, 90 ,80`), Created At, Actions (switch, Edit,
+  Timeline). A row is found by its link to `/cw/dashboard/cars/<id>`, and the
+  table by its `Acriss Code` header. **The Transmission column is always
+  empty** (known issue). The page's other "Actions" button is the table's
+  column header, so the bulk one is the one outside the table.
+- **Filters** (`CarFilters`): `#plateNo`, `#acrissCode`, a Rent/Day number
+  field, and twelve react-selects — Ally Name, branches, Insurance Type, Make,
+  Models, Vehicle Type, City, Rent Type, Transmission, Car Availability
+  Status, Year, KM Type. **Make lists only its first ten**, so it is typed.
+  Working ones send `allyIds: ["156039"]`, `branchIds: [161295]`,
+  `insuranceId: [2]` (Full), `makes: ["1222"]`, `models: [1453]`,
+  `rentType: "RENT_TO_OWN"`, `transmission: "manual"`,
+  `availabilityStatus: false`, `years: [2021]`, `plateNo`, `acrissCode`; the
+  URL keeps them under slightly different names (`allyCompanyId`, `makeId`,
+  `model`, `year`). Choosing "Active" availability sends nothing extra — it
+  is the default. **Clear sends the unfiltered query again** here (unlike
+  customers and partners).
+- **Five filters do nothing** (known issue): Vehicle Type, City and KM Type
+  send no query at all — the dropdown shows the choice, Search does
+  nothing; Rent/Day is left out of the query even after Enter; and Models on
+  its own is sent but ignored (it narrows only together with a Make: Suzuki +
+  Dzire = 9). `CarsPage.searchSends` records what Search sent, so those specs
+  fail with that instead of a timeout.
+- **Details** (`/cars/<id>`, "Car Details", from `CarProfile`): Car
+  Availability Status, Rent/Day, Transmission, Insurance Type and Value, Year,
+  Make, Model, Acriss Code, Ally Name, Branch Name, Rent/Week, "Rent/
+  1months", Additional Distance Cost, Car Features; then the image and
+  **Back**.
+- **Edit** (`/cars/<id>/edit`, "Edit Car") has groups — branch (car numbers
+  per branch, Rent-To-Own), Car (Make / Model / Version autocompletes,
+  Reference Code, feature, a status labelled with the untranslated key
+  **`car.status`**), Rental Price Without Tax (day, week, month, then 2–12 and
+  24 months), kilometers ("Disnatce per week", sic) and Insurance — and
+  **save** (lower-case) disabled until something changes, and Cancel.
+  **Cancel goes back in history**: reached from the list it returns there;
+  opened by URL it stays put. "Create New Car" opens `/cars/add` ("Add New
+  Car"), the same form empty.
+- **Timeline** opens "Car TimeLine" (`Car ID :<id>`) from `CarAudits`.
+- **Fleet Management** opens `/cars/fleet-management`: Ally and Branches
+  autocompletes and Cancel; not explored further.
+
 ## Printing (`BookingDetailsPage.print`)
 
 - **Print** sends `GenerateRentalPdf { rentalId }`, then polls
@@ -482,6 +543,104 @@ npm run clean:cache                                       # drop the cached bund
   list — no confirmation step, no toast.
 - The spec checks the price summary, the API's answer, the list row (searched
   by the new id) and the details page.
+
+### The refactored Add Booking (`/bookings/add2`, `add-booking-scenarios.spec.ts`)
+
+- **Every scenario books for real** for the test customer and is **closed
+  straight after** (afterEach), as agreed with the owner — 10 bookings a run:
+  daily with no extras / with extras / with Full insurance, delivery,
+  handover in another branch (another city), monthly, monthly in
+  installments, rent to own, a suggested daily price, online payment.
+  Never retried. First runs: 21696–21703, 21707–21710. Checks that book
+  nothing: Rent waits for insurance, 7 days at the weekly rate (88), an
+  unknown coupon ("Invalid coupon", `CarCouponAvailability` status false).
+- **Cleanup is Closed — that is the dashboard's cancel** (confirmed by the
+  owner): a Pending booking offers no separate Cancelled status (Change Status and Edit list Pending, Confirmed, Car
+  Received, Invoiced, Closed). Closing a Pending booking asks for a reason
+  from `CancelledReasons { rentalType, status: "pending", userType }` and
+  sends `CloseRental`.
+- **Data** (`testData.addBooking`, agreed with the owner): Hegazy Riyadh —
+  Suzuki Dzire 17180 (Standard only) and Proton Gen 2 17190 (Full and
+  Standard); **handover with Al-nagah** (Haleef Z, Riyadh → Haleef B,
+  Jeddah) because Hegazy has one branch per city and no handover to another
+  city; **rent to own with Asmak in Umluj** because no partner offers it in
+  Riyadh.
+- The flow: mobile → Customer Data (`GetUsers`) → Booking type radios
+  (Daily / Monthly / Rent To Own) → Delivery and Handover in another branch
+  checkboxes → dates → Pickup City (and, with Handover, a drop-off city
+  "Select...") → company ("Selceting a company") → branch ("Selceting a
+  branch", or "Selecting Pickup branch" with Handover) → car → with Handover
+  "Selecting Dropoff branch" and "Change Handover service fees" (suggested
+  30) → Extra Services checkboxes → coupon → **Select Insurance** (only the
+  car's own: Standard, Full) → About price → payment (Cash / Online) →
+  suggested price → **Rent** (disabled until insurance is chosen).
+  **Changing a date clears the company, branch and car** (the city stays),
+  so dates are set first. The date fields use the MUI date-time picker
+  (`pickDate`). A **suggested price** is sent with Rent (`suggestedPrice`)
+  and the booking is charged at it (80 × 3 + 15 → 293.25), but the summary
+  keeps the list price (known issue). **Online** sends `paymentMethod:
+  "ONLINE"`; the booking is unpaid. Queries:
+  `AvailableAllyCompanies`, `AvailableBranches`, `GetAllAvailableCars`,
+  `GetRentPrice` (every change), then `CreateBooking`.
+- **Ticking Delivery or Handover resets the city, company and car**, so they
+  are ticked first. Their `<label for>` points at ids the boxes lack, so
+  the box itself is clicked (known issue).
+- **Pricing** (`GetRentPrice.aboutRentPrice`, shown in About price):
+  rent after discount + `addsPrice` (extras, unlimited KM, Full insurance,
+  delivery, handover) = before tax; +15% VAT = total. Per-day extras ×
+  days, per-rent once. **Unlimited KM is charged automatically** when the car
+  is unlimited with a fee (Dzire: 5/day → 15 on 3 days; the old page did not
+  charge it — open question). **Standard insurance is not charged**
+  (`insuranceIncluded: false`, value 5 shown only as "Total insurance amount
+  5" on the booking); **Full is** (Proton: 1/day, listed as "Insurance
+  (Full)"). Monthly charges the monthly rate as a "Monthly dis." (One Month
+  = 30 days at 77); its default is Three Months. Installments add
+  `installmentsBreakdown` (one per month). Rent to own shows "Choose Plan"
+  (3 months: 2000 first, 500 monthly, 1000 final + VAT = 4600) and sends
+  `ownCarPlanId`.
+- **Delivery**: a Google map with "Enter a location" (Places autocomplete,
+  `.pac-item`); the fee is by distance (10 from the centre, 20 to Kingdom
+  Centre). Sends `deliverType: "one_way"`, `deliverLat/Lng`, `deliveryPrice`.
+  **Choose the city before the location**: after it, the point sometimes
+  (2 of 3 tries) snaps to the city centre while the box still names the
+  place (known issue, no failing spec — it is a race).
+- **Handover** sends `dropOffBranchId`, `dropOffCityId`, `handoverPrice`,
+  `handoverLat/Lng` (the drop-off city's centre) and `handoverAddress: "1"`.
+- **What ending a rent-to-own booking should do to its car** (the owner's
+  rules; `ownCarDetail.isRented` and the car's availability):
+  - cancelled or closed **within a month of creation**, from any status →
+    `isRented: false`, **Active**;
+  - after a month, closed or cancelled **from Invoiced** → `isRented: true`,
+    Inactive (the customer keeps the car);
+  - after a month, from any other status → `isRented: false`, Inactive.
+  The suite's bookings are closed within minutes, so only the first rule
+  applies to them — and both cases below break it.
+- **Which rent-to-own cars are offered depends on the pickup date**: a car's
+  `ownCarDetail.availableAfterDays` (owner's note) holds it back until then,
+  and an RTO pickup can be at most 20 days ahead. Riyadh offered no partner
+  on 21/09 and "test payment order" for a pickup on 06/10.
+- **Asmak's 17109 (Sabya, a Riyadh branch) is never offered**, on either
+  date, though it is Active, rent-to-own and `availableAfterDays: 0`: its
+  `ownCarDetail.isRented` is still **true** while every booking on it is
+  closed or cancelled: six in all 490 of Asmak's rent-to-own bookings. Only
+  20440 got far — Car Received on 19/07, **Invoiced** (pending review) on
+  04/08 and closed seconds later, with its RTO end date still 15/05/2027;
+  the other five were cancelled, 20439 after Car Received and the rest
+  while Pending. So the
+  car was never released when 20440 was invoiced or closed early. Most likely the same
+  backend bug — ending an RTO booking does not release the car. Not given a
+  spec; for the backend to confirm.
+- **Booking a rent-to-own car deactivates it, and closing the booking does
+  not bring it back** — seen twice: 17091 went Inactive after 21703 and,
+  once the owner reactivated it by hand, again after 21707. The owner says a
+  *cancel* reactivates it, but a Pending booking cannot be cancelled from the
+  dashboard (above). **A backend bug, reported by the owner**; until it is
+  fixed the scenario's afterEach switches the car back on
+  (`CarsPage.setAvailable` → `ActivateCar { carId, availabilityStatus }`),
+  as the owner asked, and logs a `known issue` annotation — or a note that
+  the bug may be fixed if the car is already Active. The RTO known-issue
+  spec, which never books, uses another Asmak car (`rentToOwnPreview`,
+  fashion Dress 10/day).
 
 ### Assigning (`BookingDetailsPage.assignTo`)
 
@@ -771,6 +930,40 @@ moment one starts passing — then drop the mark.
   or last name is refused on Add and Edit Customer with "Min. 1, Max. 100
   character"; the real limit is 20. Marked `test.fail` in the customer
   lifecycle.
+- **New Add Booking (`/bookings/add2`)** — each marked `test.fail` in
+  `add-booking-scenarios.spec.ts` unless noted:
+  - the page throws `Cannot read properties of undefined (reading 'push')`
+    on load;
+  - the Delivery / Handover labels are not tied to their checkboxes;
+  - `deliverAddress` is sent as the city ("Riyadh") or a nearby district,
+    never the place chosen;
+  - **changing the handover fee does not reprice**: Rent sends the new fee
+    (50) while the summary keeps the old one (30, total 552);
+  - **Rent is enabled before a rent-to-own plan is chosen**, and would send
+    no plan;
+  - with Installments ticked the summary shows no installments, though the
+    API returns them;
+  - a **suggested price does not reach the summary** (it keeps 99 a day and
+    358.8) although the booking is charged at it;
+  - (backend, no spec) closing a rent-to-own booking leaves its car
+    Inactive — reported by the owner;
+  - (backend, no spec) a rent-to-own car can stay `isRented: true` with
+    no open booking and is then never offered (Asmak 17109);
+  - booking details show the **pickup branch as "Return branch name"** on
+    a handover booking (read on 21700);
+  - not given specs: the delivery point sometimes snaps to the city centre
+    when the city is chosen after it; the summary's Car Delivery section
+    totals extras and delivery together (and titles the handover fee "Car
+    Delivery"); "Paymet Method" and "Suzuki - Dzire - s - 2021" in the
+    form; "Insurence type", `car.status` and "Paid0/4" on booking details;
+    inactive partners are listed before a city is chosen.
+- **Five cars filters do nothing.** Vehicle Type, City and KM Type send no
+  query when Search is pressed; Rent/Day is dropped from the query; Models
+  alone is sent but ignored (it only works with a Make). Marked `test.fail`
+  in the cars filters.
+- **The cars list's Transmission column is always empty**, although every
+  car has one (the API's `transmissionName`, and its details page).
+  Marked `test.fail` in the cars list.
 - **The branches' "deleted" status filter sends a broken query first.**
   Choosing it fires `Branches` with `isDeleted: "isDeleted"`, which the API
   refuses with `400 Boolean cannot represent a non boolean value`, and only
@@ -789,6 +982,12 @@ moment one starts passing — then drop the mark.
   License change on edits that did not touch it.
 
 ## Open questions for the product
+
+- **New Add Booking pricing**: is Unlimited KM meant to be charged
+  automatically (the old page did not)? Is Standard insurance meant to be
+  free although its value (5) is shown? For rent to own the summary's Due
+  Amount is the whole 4600 while the API's `totalAmountDue` is 2300 (the
+  first installment) — which is right?
 
 - **Closed, invoiced bookings can still be repriced.** Update Extra Service
   and Change Duration are offered and accepted on a closed booking: 21606 went
