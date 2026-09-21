@@ -103,7 +103,7 @@ export class AddBookingV2Page extends BasePage {
   /**
    * Types a place into the delivery map's search and takes Google's first
    * suggestion. Choose the city **before** this: choosing it after moves the
-   * delivery point back to the city centre (known issue).
+   * delivery point back to the city centre (by design).
    */
   async deliverTo(place: string): Promise<void> {
     await this.deliveryLocation.fill(place);
@@ -230,7 +230,7 @@ export class AddBookingV2Page extends BasePage {
   /** The About price summary as one line of text. */
   async summary(): Promise<string> {
     const text = (await this.priceHeading.locator('xpath=..').innerText()).replace(/\s+/g, ' ').trim();
-    return text.replace(/ Paymet Method.*$/, '');
+    return text.replace(/ Paym(e|en)t Method.*$/, '');
   }
 
   /** The latest price the page asked the API for (`GetRentPrice`). */

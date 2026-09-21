@@ -581,8 +581,8 @@ npm run clean:cache                                       # drop the cached bund
   **Changing a date clears the company, branch and car** (the city stays),
   so dates are set first. The date fields use the MUI date-time picker
   (`pickDate`). A **suggested price** is sent with Rent (`suggestedPrice`)
-  and the booking is charged at it (80 × 3 + 15 → 293.25), but the summary
-  keeps the list price (known issue). **Online** sends `paymentMethod:
+  and the booking is charged at it (80 × 3 + 15 → 293.25), while the summary
+  keeps the list price — by design (owner). **Online** sends `paymentMethod:
   "ONLINE"`; the booking is unpaid. Queries:
   `AvailableAllyCompanies`, `AvailableBranches`, `GetAllAvailableCars`,
   `GetRentPrice` (every change), then `CreateBooking`.
@@ -641,8 +641,8 @@ npm run clean:cache                                       # drop the cached bund
   `.pac-item`); the fee is by distance (10 from the centre, 20 to Kingdom
   Centre). Sends `deliverType: "one_way"`, `deliverLat/Lng`, `deliveryPrice`.
   **Choose the city before the location**: after it, the point sometimes
-  (2 of 3 tries) snaps to the city centre while the box still names the
-  place (known issue, no failing spec — it is a race).
+  (2 of 3 tries) moves back to the city centre while the box still names
+  the place — by design (owner).
 - **Handover** sends `dropOffBranchId`, `dropOffCityId`, `handoverPrice`,
   `handoverLat/Lng` (the drop-off city's centre) and `handoverAddress: "1"`.
 - **What ending a rent-to-own booking should do to its car** (the owner's
@@ -1010,29 +1010,37 @@ moment one starts passing — then drop the mark.
   character"; the real limit is 20. Marked `test.fail` in the customer
   lifecycle.
 - **New Add Booking (`/bookings/add2`)** — each marked `test.fail` in
-  `add-booking-scenarios.spec.ts` unless noted:
+  `add-booking-scenarios.spec.ts` unless noted (reviewed with the owner on
+  22/09):
   - the page throws `Cannot read properties of undefined (reading 'push')`
-    on load;
-  - `deliverAddress` is sent as the city ("Riyadh") or a nearby district,
-    never the place chosen;
+    on load — **reported**;
   - **changing the handover fee does not reprice**: Rent sends the new fee
-    (50) while the summary keeps the old one (30, total 552);
-  - with Installments ticked the summary shows no installments, though the
-    API returns them;
-  - a **suggested price does not reach the summary** (it keeps 99 a day and
-    358.8) although the booking is charged at it;
+    (50) while the summary keeps the old one (30, total 552) — **reported**;
   - (backend, no spec) closing a rent-to-own booking leaves its car
     Inactive — reported by the owner;
   - (backend, no spec) a rent-to-own car can stay `isRented: true` with
     no open booking and is then never offered (Asmak 17109);
   - booking details show the **pickup branch as "Return branch name"** on
-    a handover booking (read on 21700);
-  - not given specs: the delivery point sometimes snaps to the city centre
-    when the city is chosen after it; the summary's Car Delivery section
-    totals extras and delivery together (and titles the handover fee "Car
-    Delivery"); "Paymet Method" and "Suzuki - Dzire - s - 2021" in the
-    form; "Insurence type", `car.status` and "Paid0/4" on booking details;
-    inactive partners are listed before a city is chosen.
+    a handover booking (read on 21700) — the owner will report it, low
+    priority;
+  - **inactive partners are offered**: the company dropdown lists
+    partners with `isActive: false`, before a city is chosen (28 of 153)
+    and after it too — "abdelrhman ally" (155973) in Riyadh: "inActive"
+    in Ally Companies (switch off) and "Inactive" on its details page,
+    though its four Riyadh branches (161173–161176) are each Active — the
+    branches list shows the branch's status, not the partner's. They should
+    not be offered — **reported** by the owner (22/09). The spec checks the
+    Riyadh answer of `AvailableAllyCompanies` has no `isActive: false`;
+  - (no spec) "Insurence type", `car.status` and "Paid0/4" on booking
+    details — the owner will report them, with the return branch above.
+- **By design on add2, not issues** (owner, 22/09): `deliverAddress` is sent
+  as the city or a nearby district; the summary shows no installments with
+  Installments ticked; a suggested price does not show in the summary
+  (the booking is still charged at it); choosing the city after the
+  delivery location moves the point back to the city centre; the summary's
+  Car Delivery section totals extras and delivery together. "Suzuki -
+  Dzire - s - 2021" is a test car's name. **"Paymet Method" is fixed**
+  (now "Payment Method").
 - **New Edit Booking (`/bookings/<id>/edit2`)**:
   - after a car (or partner) change **the summary shows the old daily
     price** (99 with a 1% "No dis." discount) but Save charges the new
