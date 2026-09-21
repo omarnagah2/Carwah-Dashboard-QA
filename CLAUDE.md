@@ -706,8 +706,8 @@ npm run clean:cache                                       # drop the cached bund
   summary prices the new car at the booking's old daily rate (99, shown as
   "Discount (No dis.) - (1)%"), while Save charges the new car's own (100):
   Proton 345 shown / 348.45 saved, Audi 341.55 / 345. The scenarios check
-  the saved booking; the summary is a `test.fail`. Which one is meant is
-  for the product to say.
+  the saved booking; the summary is a `test.fail`. **Already reported**
+  by the owner.
 ### Assigning (`BookingDetailsPage.assignTo`)
 
 - **Assign To** opens "Customer Care List": radios named by user (26 today,
@@ -1023,7 +1023,7 @@ moment one starts passing — then drop the mark.
 - **New Edit Booking (`/bookings/<id>/edit2`)**:
   - after a car (or partner) change **the summary shows the old daily
     price** (99 with a 1% "No dis." discount) but Save charges the new
-    car's (100) — marked `test.fail`;
+    car's (100) — marked `test.fail`; already reported by the owner;
   - (no spec) the same `reading 'push'` script error as add2 on load, and
     the breadcrumb shows the untranslated key `sidebar.<id>`.
 - **Five cars filters do nothing.** Vehicle Type, City and KM Type send no

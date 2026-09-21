@@ -280,6 +280,7 @@ test.describe('edit booking (new page)', () => {
   });
 
   test('after a car change the summary shows the price the booking is saved at', async ({ page }) => {
+    // Already reported by the owner.
     test.fail(true, 'The summary keeps the old car’s daily price (99, with a 1% "No dis." discount) while Save charges the new car’s (100)');
     const bookingId = await book(page, data.standard);
     const edit = new EditBookingV2Page(page);
