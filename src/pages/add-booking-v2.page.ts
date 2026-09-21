@@ -39,7 +39,7 @@ export interface RentPrice {
  * summary, and **Rent**.
  *
  * Ticking Delivery or Handover **resets the city, company and car**, so they
- * are ticked first. Their labels are not tied to the checkboxes (`for`
+ * are ticked first. Only the box ticks, not its label (`for`
  * without an id), so the box itself is clicked.
  */
 export class AddBookingV2Page extends BasePage {
@@ -87,7 +87,7 @@ export class AddBookingV2Page extends BasePage {
     await this.byRole('radio', { name: type, exact: true }).check();
   }
 
-  /** The Delivery / Handover checkbox; its label is not linked to it. */
+  /** The Delivery / Handover checkbox; its label is not linked to it (by design). */
   optionBox(option: 'delivery' | 'handover'): Locator {
     return this.page
       .locator('div.form-check')

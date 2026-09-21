@@ -316,13 +316,36 @@ export class BookingDetailsPage extends BasePage {
       'xpath=ancestor::div[contains(@class, "booking-details-card")][1]',
     );
     // Label then amount only, so `Total` does not match `Total days (4)`.
+    // Any run of spaces between words: rent to own's reads `Grand Total  + Vat`.
+    const pattern = escapeRegExp(label).replace(/ +/g, '\\s+');
     const line = card
       .getByRole('listitem')
-      .filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*-?\\d+(\\.\\d+)?\\s*$`) })
+      .filter({ hasText: new RegExp(`^\\s*${pattern}\\s*-?\\d+(\\.\\d+)?\\s*$`) })
       .first();
     const numbers = (await line.innerText()).match(/-?\d+(\.\d+)?/g) ?? [];
     expect(numbers.length, `About Price line "${label}"`).toBeGreaterThan(0);
     return Number(numbers[numbers.length - 1]);
+  }
+
+  /**
+   * A rent-to-own booking's Rental Installments table, one row per
+   * installment. The Due Date (like Paid at) is a date input, so its cell has
+   * no text of its own; the first row's status is a select.
+   */
+  async rentalInstallments(): Promise<{ dueDate: string; amount: number; status: string; paymentMethod: string }[]> {
+    const table = this.page.locator('table').filter({ hasText: 'Earning Value' });
+    await expect(table.locator('tr:has(td)').first()).toBeVisible();
+    return table.locator('tr:has(td)').evaluateAll((rows) =>
+      rows.map((row) => {
+        const cells = [...row.children] as HTMLElement[];
+        return {
+          dueDate: cells[0].querySelector('input')?.value ?? '',
+          amount: Number(cells[1].innerText.replace(/[^\d.]/g, '')),
+          status: cells[2].innerText.trim(),
+          paymentMethod: cells[3].innerText.trim(),
+        };
+      }),
+    );
   }
 
   /**

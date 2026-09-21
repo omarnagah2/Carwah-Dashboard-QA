@@ -307,7 +307,32 @@ test.describe('add booking (new page): scenarios', () => {
 
     expect(sent.ownCarPlanId, 'the chosen plan').toBeTruthy();
     const rental = await openCreated(page, bookingId);
-    expect(rental).toMatchObject({ isRentToOwn: true });
+    expect(rental).toMatchObject({ isRentToOwn: true, totalBookingPrice: price.totalPrice });
+
+    // The form shows the whole price as Due Amount, by design; the booking
+    // details split it into the plan and its installments.
+    const details = new BookingDetailsPage(page);
+    expect(await details.aboutPrice('1st installment')).toBe(plan.firstPayment);
+    expect(await details.aboutPrice('Monthly installment')).toBe(plan.monthlyInstallment);
+    expect(await details.aboutPrice('Final Installment')).toBe(plan.finalInstallment);
+    expect(await details.aboutPrice('Total')).toBe(price.priceBeforeTax);
+    expect(await details.aboutPrice('Vat 15%')).toBe(price.taxValue);
+    expect(await details.aboutPrice('Grand Total + Vat')).toBe(price.totalPrice);
+    const count = price.installmentsBreakdown!.length;
+    expect(await details.aboutPrice(`Completed Payments (0/${count})`)).toBe(0);
+    expect(await details.aboutPrice('Remaining Due')).toBe(price.totalPrice);
+    expect(await details.detail('Grand Total')).toBe(String(price.totalPrice));
+
+    // Each installment with its VAT (2300, 575, 575, 1150 on the 3-month
+    // plan), adding up to the total; the first is due now, in cash.
+    const installments = await details.rentalInstallments();
+    expect(installments.map((i) => i.amount)).toEqual(price.installmentsBreakdown!.map((i) => i.amount));
+    expect(money(installments.reduce((sum, i) => sum + i.amount, 0))).toBe(price.totalPrice);
+    expect(installments.map((i) => i.status)).toEqual(['Not-Collected', ...Array(count - 1).fill('Upcoming')]);
+    expect(installments[0].paymentMethod).toBe('Cash');
+    // The Due Date column shows each installment's date, a month apart.
+    const dueDates = (rental.installments as { dueDate: string }[]).map((i) => i.dueDate.slice(0, 10).split('-').reverse().join('-'));
+    expect(installments.map((i) => i.dueDate)).toEqual(dueDates);
   });
 
   test('a booking at a suggested daily price', async ({ page }) => {
@@ -430,13 +455,6 @@ test.describe('add booking (new page): known issues', () => {
     });
     await start();
     expect(errors).toEqual([]);
-  });
-
-  test('clicking the word "Delivery" ticks its box', async ({ page }) => {
-    test.fail(true, 'The Delivery / Handover labels point at ids the checkboxes do not have, so only the box itself reacts');
-    await start();
-    await page.getByText('Delivery', { exact: true }).click();
-    await expect(form.optionBox('delivery')).toBeChecked({ timeout: 3_000 });
   });
 
   // Choosing the city after the delivery location sometimes moves the point

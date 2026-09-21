@@ -583,8 +583,9 @@ npm run clean:cache                                       # drop the cached bund
   `AvailableAllyCompanies`, `AvailableBranches`, `GetAllAvailableCars`,
   `GetRentPrice` (every change), then `CreateBooking`.
 - **Ticking Delivery or Handover resets the city, company and car**, so they
-  are ticked first. Their `<label for>` points at ids the boxes lack, so
-  the box itself is clicked (known issue).
+  are ticked first, and **only the box itself ticks** — clicking the word
+  does nothing (their `<label for>` points at ids the boxes lack). **Both are
+  by design** (confirmed by the owner), not issues.
 - **Pricing** (`GetRentPrice.aboutRentPrice`, shown in About price):
   rent after discount + `addsPrice` (extras, unlimited KM, Full insurance,
   delivery, handover) = before tax; +15% VAT = total. Per-day extras ×
@@ -600,6 +601,26 @@ npm run clean:cache                                       # drop the cached bund
   `ownCarPlanId`. Rent stays disabled until a plan is chosen (it did not
   until 21/09). **Rent to own takes no insurance** (confirmed by the owner):
   the plan is the only choice before Rent, unlike Daily and Monthly.
+  **The form's Due Amount is the whole price** (4600) although the API's
+  `totalAmountDue` is the first installment (2300) — **by design** (owner):
+  the booking details split it. There (booking 21719, 3-month plan):
+  - About Price: 1st installment 2000, Monthly 500, Final 1000, No. of
+    months 3, Total 4000, Vat 600, **Grand Total + Vat 4600**, Completed
+    Payments (0/4) 0, **Remaining Due 4600** while Pending — **2300 once
+    closed**;
+  - Rental Installments: four rows, each installment + 15% VAT — 2300
+    (Not-Collected, Cash), 575, 575 (Upcoming), 1150 (Upcoming); they add
+    up to the Grand Total. Once closed the last three read **Not
+    Collectable**. The Due Date column shows each `dueDate`, a month
+    apart (21-09-2026, 21-10-2026, 20-11-2026, 20-12-2026) — **inside date
+    inputs** (as is Paid at), so read the cell's input value: its text is
+    empty (this was once misreported here as a missing date);
+  - Main Booking Details: Total rental days 90, Price before tax 4000, Tax
+    600, Grand Total 4600, Payment Status "Paid0/4"; the header "Paid 0/4";
+    the action bar adds **Edit Plate No** and **Update Rental Dates**.
+  The rent-to-own scenario checks all of this (`aboutPrice`, which allows
+  the double space in `Grand Total  + Vat`, and `rentalInstallments` —
+  its rows are `tr`s outside any `tbody`).
 - **Delivery**: a Google map with "Enter a location" (Places autocomplete,
   `.pac-item`); the fee is by distance (10 from the centre, 20 to Kingdom
   Centre). Sends `deliverType: "one_way"`, `deliverLat/Lng`, `deliveryPrice`.
@@ -634,7 +655,7 @@ npm run clean:cache                                       # drop the cached bund
   spec; for the backend to confirm.
 - **Booking a rent-to-own car deactivates it, and closing the booking does
   not bring it back** — seen twice: 17091 went Inactive after 21703 and,
-  once the owner reactivated it by hand, again after 21707. The owner says a
+  once the owner reactivated it by hand, again after 21707 and 21719–21722. The owner says a
   *cancel* reactivates it, but a Pending booking cannot be cancelled from the
   dashboard (above). **A backend bug, reported by the owner**; until it is
   fixed the scenario's afterEach switches the car back on
@@ -936,7 +957,6 @@ moment one starts passing — then drop the mark.
   `add-booking-scenarios.spec.ts` unless noted:
   - the page throws `Cannot read properties of undefined (reading 'push')`
     on load;
-  - the Delivery / Handover labels are not tied to their checkboxes;
   - `deliverAddress` is sent as the city ("Riyadh") or a nearby district,
     never the place chosen;
   - **changing the handover fee does not reprice**: Rent sends the new fee
@@ -985,9 +1005,7 @@ moment one starts passing — then drop the mark.
 
 - **New Add Booking pricing**: is Unlimited KM meant to be charged
   automatically (the old page did not)? Is Standard insurance meant to be
-  free although its value (5) is shown? For rent to own the summary's Due
-  Amount is the whole 4600 while the API's `totalAmountDue` is 2300 (the
-  first installment) — which is right?
+  free although its value (5) is shown?
 
 - **Closed, invoiced bookings can still be repriced.** Update Extra Service
   and Change Duration are offered and accepted on a closed booking: 21606 went
