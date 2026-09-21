@@ -31,6 +31,21 @@ export abstract class ListPage extends BasePage {
     this.rows = this.table.locator('tbody tr');
   }
 
+  /**
+   * Whether a `listQuery` answer is the list's own. The branches page also
+   * fills its filter dropdowns with `Branches` queries, so it narrows this.
+   */
+  protected listQueryMatches(_variables: Record<string, unknown>): boolean {
+    return true;
+  }
+
+  private isListQuery(response: Response): boolean {
+    if (!isOperation(response, this.listQuery)) {
+      return false;
+    }
+    return this.listQueryMatches(response.request().postDataJSON()?.variables ?? {});
+  }
+
   async total(): Promise<number> {
     return Number((await this.totalResults.innerText()).match(/\d+/)![0]);
   }
@@ -42,7 +57,8 @@ export abstract class ListPage extends BasePage {
     return response;
   }
 
-  async setPageSize(size: 10 | 25 | 50 | 100): Promise<Response> {
+  /** Sizes differ per list: bookings offer 10/25/50/100, branches 10/20/40/80/100. */
+  async setPageSize(size: number): Promise<Response> {
     await this.pageSizeButton.click();
     return this.reloadingList(() => this.byRole('option', { name: String(size), exact: true }).click());
   }
@@ -87,7 +103,7 @@ export abstract class ListPage extends BasePage {
     // Bounded, so an action that never queries (the bookings' Airports filter)
     // fails with a reason instead of running into the test timeout — but long
     // enough for API pacing, which has held a list query over 10s.
-    const response = this.page.waitForResponse((r) => isOperation(r, this.listQuery), { timeout: 30_000 });
+    const response = this.page.waitForResponse((r) => this.isListQuery(r), { timeout: 30_000 });
     await action();
     const answered = await response;
     expect(answered.ok(), `${this.listQuery} answered ${answered.status()}`).toBeTruthy();
@@ -100,7 +116,7 @@ export abstract class ListPage extends BasePage {
    * API's own words when it refuses — the page would just show no records.
    */
   protected async openAt(path: string): Promise<Response> {
-    const listed = this.page.waitForResponse((r) => isOperation(r, this.listQuery), { timeout: 30_000 });
+    const listed = this.page.waitForResponse((r) => this.isListQuery(r), { timeout: 30_000 });
     await this.page.goto(path, { waitUntil: 'domcontentloaded' });
     const response = await listed;
     const body = await response.text();

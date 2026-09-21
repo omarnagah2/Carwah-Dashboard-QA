@@ -153,6 +153,12 @@ export const testData = {
       };
     },
   },
+  /** The branches specs read the bookings' ally and its Riyadh branch. */
+  branches: {
+    knownBranch: { id: process.env.CARWAH_BRANCH_ID ?? '161295', name: 'Hegazy Riyadh' },
+    ally: 'Hegazy Cars',
+    city: 'Riyadh',
+  },
   admin: {
     email: process.env.DASHBOARD_ADMIN_EMAIL ?? '',
     password: process.env.DASHBOARD_ADMIN_PASSWORD ?? '',

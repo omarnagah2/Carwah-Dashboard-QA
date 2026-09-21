@@ -18,6 +18,7 @@ tests/
 ├── customers/      customers-list, customers-filters (read-only),
 │                   customer-lifecycle (writes: adds one customer per run,
 │                   edits it, deletes it at the end)
+├── branches/       branches-list, branches-filters (read-only)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -32,7 +33,8 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                customers (list), customer-filters, customer-details,
                customer-form (shared by add-customer and edit-customer),
                companies (partners list), company-filters, company-details,
-               company-form (shared by add-company and edit), add-company
+               company-form (shared by add-company and edit), add-company,
+               branches (list), branch-filters, branch-details
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -70,6 +72,12 @@ npm run clean:cache                                       # drop the cached bund
   **stops** rather than logging someone out, unless
   `DASHBOARD_TAKE_OVER_SESSION=1`. `super5@carwah.co` is shared, which is why
   this bites: the suite needs an admin account nobody else uses.
+- **A session ends by itself 24 hours after sign-in** (confirmed by the
+  owner). Then the stored one is rejected ("The stored session was rejected
+  — signing in again") and setup signs in afresh — which works as long as
+  nobody else is signed in with the account; if someone is, setup stops on
+  the other-device dialog as above. A rejected session after a quiet day is
+  therefore expiry, not someone else signing in.
 - **The session is in localStorage** (`user_data`, `state`), no cookies and no
   sessionStorage, so a plain `storageState` (`playwright/.auth/admin.json`) is
   enough — unlike Carwah UI, no session re-seeding fixture is needed.
@@ -352,6 +360,54 @@ npm run clean:cache                                       # drop the cached bund
   Marked `test.fail` (known issue below).
 - The timeline's `update` entry names the changed columns
   (`manager_name`, `commision_rate`, `is_b2b`) with old and new values.
+
+## Branches (/cw/dashboard/branches)
+
+- **Read-only.** Branches belong to real partners and the lifecycle books at
+  Hegazy Riyadh (161295, `testData.branches.knownBranch`), so no spec saves a
+  form, flips a row's active switch or confirms a delete — **the delete
+  question warns it removes the branch's cars with it**.
+- **The list shows every branch** (867 today, newest id first). Columns: `#`,
+  BranchID, Ally Name, Branch Name, Status, cars (a **Show Cars** button),
+  City, Email, Actions (switch, Edit, delete, Timeline). Inactive branches
+  read "Inactive" here (unlike the partners list's "inActive").
+- **The page sends several `Branches` queries** — its Ally Name and branches
+  dropdowns use the same operation — so `BranchesPage` only accepts the one
+  carrying a `page` (`listQueryMatches`).
+- **Page sizes are 10 / 20 / 40 / 80 / 100**, not the bookings' 10/25/50/100.
+- **Filters** (`BranchFilters`): four react-selects and no text fields — Ally
+  Name, **branches** (the branch itself, typed: its list loads after 4
+  characters), City and Status (Active / Inactive / **deleted**). Search
+  sends `allyCompanyIds: ["156039"]`, `branchIds: [161295]` (numbers, unlike
+  the ally's string ids), `areaIds: [1]`, `isActive`, `isDeleted: true`; the
+  URL keeps them (branch as `branchId`, status as `isActive: "0"`).
+  **Clear sends no query.** Filters combine.
+- **Deleting is a soft delete**: the Status "deleted" filter lists 44 branches
+  with a `deletedAt`, and choosing it also fires one **malformed query**
+  first (known issue below).
+- **Details** (`/branches/<id>`, "Branch Details", from `Branch { id }`):
+  Branch Address, City, Branch ID, Manager Number (the ally's phone with a
+  digit in front), Branch Name, Status; then two Branch Location maps and
+  **Work Time Shifts** — a button per weekday that opens that day's Start
+  Time and End Time (`branchWorkingDays`, seven entries, Hegazy Riyadh is
+  open 00:00–23:59 all week).
+- **Show Cars** opens a "Listing Cars" dialog filled by `AllyCars
+  { page, limit: 50, branchIds: [id] }` — Car, Ally Name, Branch Name,
+  Transmission, Acriss Code, City Name, Car Count, Car Availability Status,
+  Rent(Day,Week,Month), Created At — with its own pagination and an Actions
+  button. Each row's `branch.id` is the branch. **Close** (the lower of the
+  dialog's two) closes it.
+- **Timeline** opens "Branch TimeLine" (`BranchID :<id>`) with old and new
+  data per entry, newest first.
+- **The delete question** (a SweetAlert: "Are You Sure ? you want to delete
+  this branch and the related cars?", Cancel / delete) closes with Cancel and
+  deletes nothing; the spec checks that and never presses delete.
+- **A closed SweetAlert still looks visible to Playwright.** It is only
+  faded out (opacity 0) and kept in the page, so `toBeHidden()` on
+  `.swal-modal` fails although the alert has closed. The real signal is the
+  overlay losing `swal-overlay--show-modal` (`BranchesPage.cancelDelete`).
+  This once had Cancel misreported here as broken — the owner confirmed by
+  hand that it works, and tracing the overlay's class proved it.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -715,6 +771,11 @@ moment one starts passing — then drop the mark.
   or last name is refused on Add and Edit Customer with "Min. 1, Max. 100
   character"; the real limit is 20. Marked `test.fail` in the customer
   lifecycle.
+- **The branches' "deleted" status filter sends a broken query first.**
+  Choosing it fires `Branches` with `isDeleted: "isDeleted"`, which the API
+  refuses with `400 Boolean cannot represent a non boolean value`, and only
+  then the right `isDeleted: true`. The results are correct, so only the
+  network shows it. Marked `test.fail` in the branches filters.
 - **A refused partner save is silent.** Saving Edit Company with a manager
   name over 20 characters is rejected by the API, but the dashboard shows no
   toast and no field error — the form simply stays as it was. Marked
