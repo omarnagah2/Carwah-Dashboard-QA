@@ -15,7 +15,7 @@ tests/
 ├── bookings/       bookings-list, bookings-filters (read-only),
 │                   recall-gateway (clicks Recall Gateway on one customer booking),
 │                   booking-lifecycle (writes: one booking per run, closed at the end),
-│                   add-booking-scenarios (writes: 10 bookings on the new Add
+│                   add-booking-scenarios (writes: 11 bookings on the new Add
 │                   Booking page, each closed at once; plus checks and known
 │                   issues that book nothing),
 │                   edit-booking-v2 (writes: 10 bookings on add2, each edited
@@ -550,8 +550,9 @@ npm run clean:cache                                       # drop the cached bund
 ### The refactored Add Booking (`/bookings/add2`, `add-booking-scenarios.spec.ts`)
 
 - **Every scenario books for real** for the test customer and is **closed
-  straight after** (afterEach), as agreed with the owner — 10 bookings a run:
-  daily with no extras / with extras / with Full insurance, delivery,
+  straight after** (afterEach), as agreed with the owner — 11 bookings a run:
+  daily with no extras / with extras / without Unlimited KM / with Full
+  insurance, delivery,
   handover in another branch (another city), monthly, monthly in
   installments, rent to own, a suggested daily price, online payment.
   Never retried. First runs: 21696–21703, 21707–21710. Checks that book
@@ -592,12 +593,24 @@ npm run clean:cache                                       # drop the cached bund
 - **Pricing** (`GetRentPrice.aboutRentPrice`, shown in About price):
   rent after discount + `addsPrice` (extras, unlimited KM, Full insurance,
   delivery, handover) = before tax; +15% VAT = total. Per-day extras ×
-  days, per-rent once. **Unlimited KM is charged automatically** when the car
-  is unlimited with a fee (Dzire: 5/day → 15 on 3 days; the old page did not
-  charge it — open question). **Standard insurance is not charged**
+  days, per-rent once. **Unlimited KM comes ticked by default** — by design
+  (owner) — but only on a car that offers it, and it is priced from the
+  car's own settings (`isUnlimited`, `isUnlimitedFree`,
+  `unlimitedFeePerDay`): free, shown as "Unlimited KM Free 0" (Al-nagah's
+  Audi), or a fee per day (Dzire: 5/day → 15 on 3 days). **Unticking it
+  while adding the booking takes it off** when the customer does not need
+  it: the car's own box (`#Unlimited.KM`, `dropUnlimitedKm`) reprices at once
+  (Dzire 358.8 → 341.55) and Rent sends `isUnlimited: false`; the scenario
+  "without Unlimited KM" books it so (21747). Hegazy also lists an extra
+  service of the same name ("Unlimited KM 5 SAR / Day"), a separate box
+  left unticked. The old page did not charge it. **Standard insurance is not charged**
   (`insuranceIncluded: false`, value 5 shown only as "Total insurance amount
   5" on the booking); **Full is** (Proton: 1/day, listed as "Insurance
-  (Full)"). Monthly charges the monthly rate as a "Monthly dis." (One Month
+  (Full)"). **By design** (owner): Standard is the basic cover — its value
+  is not added to the price, and the customer pays it only if the car has
+  an accident; Full is charged with the booking, and then the customer is
+  not liable for any damage to the car. So a spec expects Standard to add
+  nothing (`insuranceIncluded: false`) and Full to add its value. Monthly charges the monthly rate as a "Monthly dis." (One Month
   = 30 days at 77); its default is Three Months. Installments add
   `installmentsBreakdown` (one per month). Rent to own shows "Choose Plan"
   (3 months: 2000 first, 500 monthly, 1000 final + VAT = 4600) and sends
@@ -1057,10 +1070,6 @@ moment one starts passing — then drop the mark.
   License change on edits that did not touch it.
 
 ## Open questions for the product
-
-- **New Add Booking pricing**: is Unlimited KM meant to be charged
-  automatically (the old page did not)? Is Standard insurance meant to be
-  free although its value (5) is shown?
 
 - **Closed, invoiced bookings can still be repriced.** Update Extra Service
   and Change Duration are offered and accepted on a closed booking: 21606 went

@@ -26,7 +26,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * as with the add scenarios. Never retried: a retry would book again.
  */
 test.describe('edit booking (new page)', () => {
-  test.describe.configure({ retries: 0 });
+  // Each books, edits and reads the details: over a minute on a slow pre-prod.
+  test.describe.configure({ retries: 0, timeout: 180_000 });
 
   const created: string[] = [];
 

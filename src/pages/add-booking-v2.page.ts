@@ -176,6 +176,20 @@ export class AddBookingV2Page extends BasePage {
     await this.pricedBy(() => this.extraService(name).check());
   }
 
+  /**
+   * The car's own Unlimited KM box, ticked by default on a car that offers
+   * it (by design), priced from the car. Some partners also list an extra
+   * service with the same name; that one is a separate box.
+   */
+  get unlimitedKm(): Locator {
+    return this.page.locator('[id="Unlimited.KM"]');
+  }
+
+  /** Unticks Unlimited KM, for a customer who does not need it. */
+  async dropUnlimitedKm(): Promise<void> {
+    await this.pricedBy(() => this.unlimitedKm.uncheck());
+  }
+
   /** Monthly bookings pick a length (One Month … Twenty Four Months); Three by default. */
   async chooseMonths(months: string): Promise<void> {
     await this.chooseAfter(this.page.getByText('Months', { exact: true }), new RegExp(`^${months}$`));

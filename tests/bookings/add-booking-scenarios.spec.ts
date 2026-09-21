@@ -178,6 +178,29 @@ test.describe('add booking (new page): scenarios', () => {
     expect(booked, 'the booking keeps its extra services').toHaveLength(data.extraServices.length);
   });
 
+  test('a daily booking without Unlimited KM', async ({ page }) => {
+    await standardCar();
+    await form.chooseInsurance('Standard');
+    // Ticked by default on a car that offers it (by design), at the car's fee.
+    await expect(form.unlimitedKm).toBeChecked();
+    const withIt = form.price();
+    expect(withIt.totalUnlimitedFee, 'the Dzire charges Unlimited KM').toBeGreaterThan(0);
+
+    await form.dropUnlimitedKm();
+
+    const price = form.price();
+    expectConsistent(price);
+    expect(price.totalUnlimitedFee).toBe(0);
+    expect(price.totalPrice).toBe(money(withIt.totalPrice - withIt.totalUnlimitedFee * 1.15));
+    expect(await form.summary()).not.toContain('Unlimited KM');
+
+    const { bookingId, sent } = await rent();
+
+    expect(sent.isUnlimited).toBe(false);
+    const rental = await openCreated(page, bookingId);
+    expect(rental).toMatchObject({ totalUnlimitedFee: 0, totalBookingPrice: price.totalPrice });
+  });
+
   test('a daily booking with Full insurance', async ({ page }) => {
     await standardCar(data.fullInsurance);
     expect(await form.insuranceOptions()).toEqual(expect.arrayContaining(['Full', 'Standard']));
