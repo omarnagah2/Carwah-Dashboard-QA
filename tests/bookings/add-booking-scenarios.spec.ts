@@ -489,8 +489,9 @@ test.describe('add booking (new page): known issues', () => {
     await expect.poll(() => form.summary(), { timeout: 5_000 }).toContain('Car handover fee 50 SR');
   });
 
+  // Was a known issue (Rent enabled with no plan); fixed on 21/09, kept as a check.
+  // Rent to own takes no insurance, so the plan is the only thing Rent waits for.
   test('Rent waits until a rent-to-own plan is chosen', async () => {
-    test.fail(true, 'Rent is enabled before any plan is chosen, and would send no plan');
     const rto = data.rentToOwnPreview;
     await start();
     await form.bookingType('Rent To Own');

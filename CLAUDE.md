@@ -597,7 +597,9 @@ npm run clean:cache                                       # drop the cached bund
   = 30 days at 77); its default is Three Months. Installments add
   `installmentsBreakdown` (one per month). Rent to own shows "Choose Plan"
   (3 months: 2000 first, 500 monthly, 1000 final + VAT = 4600) and sends
-  `ownCarPlanId`.
+  `ownCarPlanId`. Rent stays disabled until a plan is chosen (it did not
+  until 21/09). **Rent to own takes no insurance** (confirmed by the owner):
+  the plan is the only choice before Rent, unlike Daily and Monthly.
 - **Delivery**: a Google map with "Enter a location" (Places autocomplete,
   `.pac-item`); the fee is by distance (10 from the centre, 20 to Kingdom
   Centre). Sends `deliverType: "one_way"`, `deliverLat/Lng`, `deliveryPrice`.
@@ -939,8 +941,6 @@ moment one starts passing — then drop the mark.
     never the place chosen;
   - **changing the handover fee does not reprice**: Rent sends the new fee
     (50) while the summary keeps the old one (30, total 552);
-  - **Rent is enabled before a rent-to-own plan is chosen**, and would send
-    no plan;
   - with Installments ticked the summary shows no installments, though the
     API returns them;
   - a **suggested price does not reach the summary** (it keeps 99 a day and
