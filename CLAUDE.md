@@ -1025,7 +1025,13 @@ moment one starts passing — then drop the mark.
     price** (99 with a 1% "No dis." discount) but Save charges the new
     car's (100) — marked `test.fail`; already reported by the owner;
   - (no spec) the same `reading 'push'` script error as add2 on load, and
-    the breadcrumb shows the untranslated key `sidebar.<id>`.
+    the breadcrumb shows the untranslated key `sidebar.<id>`
+    ("Carwah / Dashboard / Bookings / sidebar.21735 / 21735");
+  - (no spec) **edit2 opens a closed booking as editable**: every field,
+    Save and Extension Requests enabled, though the details page drops Edit
+    once a booking is closed. Save is refused by the API — `EditBooking`
+    answers "Invalid rental status for this action" (a red toast) and
+    nothing changes (tried on 21735 with a note).
 - **Five cars filters do nothing.** Vehicle Type, City and KM Type send no
   query when Search is pressed; Rent/Day is dropped from the query; Models
   alone is sent but ignored (it only works with a Make). Marked `test.fail`
