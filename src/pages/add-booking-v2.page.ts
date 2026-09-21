@@ -52,7 +52,7 @@ export class AddBookingV2Page extends BasePage {
   readonly handoverFee = this.byRole('textbox', { name: 'Change Handover service fees' });
   readonly suggestedPrice = this.byRole('textbox', { name: 'Suggested price per day' });
   readonly installments = this.byRole('checkbox', { name: 'Installments' });
-  private readonly options = this.page.locator('[id*="-option-"], [role="option"]');
+  protected readonly options = this.page.locator('[id*="-option-"], [role="option"]');
   /** The latest `GetRentPrice` answer the page received. */
   private lastPrice: RentPrice | undefined;
 
@@ -243,7 +243,7 @@ export class AddBookingV2Page extends BasePage {
   }
 
   /** Runs `action` and waits for the reprice it triggers. */
-  private async pricedBy(action: () => Promise<unknown>): Promise<Response> {
+  protected async pricedBy(action: () => Promise<unknown>): Promise<Response> {
     const priced = this.page.waitForResponse((r) => isOperation(r, 'GetRentPrice'), { timeout: 30_000 });
     await action();
     const response = await priced;
@@ -257,7 +257,7 @@ export class AddBookingV2Page extends BasePage {
    * The form's dropdowns are react-selects placed after a heading or label;
    * their placeholder covers the input, so it is focused, not clicked.
    */
-  private async chooseAfter(anchor: Locator, option: string | RegExp, { typed }: { typed?: string } = {}): Promise<void> {
+  protected async chooseAfter(anchor: Locator, option: string | RegExp, { typed }: { typed?: string } = {}): Promise<void> {
     const input = anchor.locator('xpath=following::input[1]');
     await input.focus();
     if (typed) {

@@ -17,7 +17,9 @@ tests/
 │                   booking-lifecycle (writes: one booking per run, closed at the end),
 │                   add-booking-scenarios (writes: 10 bookings on the new Add
 │                   Booking page, each closed at once; plus checks and known
-│                   issues that book nothing)
+│                   issues that book nothing),
+│                   edit-booking-v2 (writes: 10 bookings on add2, each edited
+│                   on /edit2 and closed at once)
 ├── customers/      customers-list, customers-filters (read-only),
 │                   customer-lifecycle (writes: adds one customer per run,
 │                   edits it, deletes it at the end)
@@ -33,6 +35,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                bookings (list), booking-filters (panel), booking-details,
                booking-form (shared price summary), add-booking, edit-booking,
                add-booking-v2 (the refactored /bookings/add2),
+               edit-booking-v2 (/bookings/<id>/edit2, extends add-booking-v2),
                date-time-picker (the MUI picker behind every booking date field),
                extension-requests (the dialog),
                customers (list), customer-filters, customer-details,
@@ -665,6 +668,46 @@ npm run clean:cache                                       # drop the cached bund
   spec, which never books, uses another Asmak car (`rentToOwnPreview`,
   fashion Dress 10/day).
 
+### The refactored Edit Booking (`/bookings/<id>/edit2`, `edit-booking-v2.spec.ts`)
+
+- **For bookings made on add2**: append `/edit2` to a booking's details URL.
+  It is the add2 form filled in with the booking (`EditBookingV2Page`
+  extends `AddBookingV2Page`): the status buttons (Pending disabled,
+  Confirmed, Car Received, Invoiced, Closed), Timeline, booking type (Rent To
+  Own disabled on a daily booking), Delivery / Handover, dates, city,
+  company, branch, car, extra services (the booking's ticked, Unlimited KM
+  ticked), coupon, insurance, About price, payment, suggested price, Note,
+  **Save**, and the customer's details on the right. It loads through
+  `GetRentalDetailsQuery` and over a dozen company/branch/car queries, so
+  `openBooking` waits for the network to go quiet.
+- **Save sends `EditBooking`** — the whole booking: `carId`, `insuranceId`,
+  dates and times, `dropOffBranchId`, cities, delivery, `allyExtraServices`
+  / `branchExtraServices` (ids), `notes`, `suggestedPrice`, `couponId`,
+  `rentalId` — answered `editRental { errors: [], status: "success",
+  rental }`. It stays on the edit page, no toast. Repricing is
+  `GetRentPrice` with `isEdit: true, rentalId`.
+- As on add2, **changing a date clears the company, branch and car**, and
+  after a car is chosen **Save stays disabled until an insurance is
+  chosen**. The insurance dropdown has no "Select Insurance" label here; it
+  is the one after the coupon. The drop-off label is "Drop off Date/Time"
+  (shown capitalised).
+- **Each scenario books on add2 and is closed straight after** (10 bookings
+  a run): drop-off a day later (4 days, 478.4 for the Dzire; details, return
+  date and Timeline follow), only the car (Dzire → Proton, same branch),
+  partner + branch + car (Hegazy → Al-nagah Haleef Z, Audi), Standard →
+  Full insurance (Proton), adding GPS + Yelo Shield, removing GPS, cash →
+  online (`paymentMethod: "ONLINE"`, Payment Type ONLINE), adding delivery
+  (tick Delivery — which clears the city, company and car as on add2 — then
+  city, Kingdom Centre, car, insurance; `deliverType: "one_way"` and the
+  point sent, the booking's `deliveryPrice` = the summary's fee), a note
+  (`notes`, listed in Rental Notes as `pending`, price unchanged), and the
+  known issue below. Explored on 21723; first runs 21724–21735, all closed.
+- **After a car change the summary and the saved booking disagree**: the
+  summary prices the new car at the booking's old daily rate (99, shown as
+  "Discount (No dis.) - (1)%"), while Save charges the new car's own (100):
+  Proton 345 shown / 348.45 saved, Audi 341.55 / 345. The scenarios check
+  the saved booking; the summary is a `test.fail`. Which one is meant is
+  for the product to say.
 ### Assigning (`BookingDetailsPage.assignTo`)
 
 - **Assign To** opens "Customer Care List": radios named by user (26 today,
@@ -977,6 +1020,12 @@ moment one starts passing — then drop the mark.
     Delivery"); "Paymet Method" and "Suzuki - Dzire - s - 2021" in the
     form; "Insurence type", `car.status` and "Paid0/4" on booking details;
     inactive partners are listed before a city is chosen.
+- **New Edit Booking (`/bookings/<id>/edit2`)**:
+  - after a car (or partner) change **the summary shows the old daily
+    price** (99 with a 1% "No dis." discount) but Save charges the new
+    car's (100) — marked `test.fail`;
+  - (no spec) the same `reading 'push'` script error as add2 on load, and
+    the breadcrumb shows the untranslated key `sidebar.<id>`.
 - **Five cars filters do nothing.** Vehicle Type, City and KM Type send no
   query when Search is pressed; Rent/Day is dropped from the query; Models
   alone is sent but ignored (it only works with a Make). Marked `test.fail`
