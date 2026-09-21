@@ -555,7 +555,8 @@ npm run clean:cache                                       # drop the cached bund
   insurance, delivery,
   handover in another branch (another city), monthly, monthly in
   installments, rent to own, a suggested daily price, online payment.
-  Never retried. First runs: 21696–21703, 21707–21710. Checks that book
+  Never retried. First runs: 21696–21703, 21707–21710; a full run on 22/09
+  was 21748–21758. Checks that book
   nothing: Rent waits for insurance, 7 days at the weekly rate (88), an
   unknown coupon ("Invalid coupon", `CarCouponAvailability` status false).
 - **Cleanup is Closed — that is the dashboard's cancel** (confirmed by the
@@ -645,6 +646,16 @@ npm run clean:cache                                       # drop the cached bund
   the place — by design (owner).
 - **Handover** sends `dropOffBranchId`, `dropOffCityId`, `handoverPrice`,
   `handoverLat/Lng` (the drop-off city's centre) and `handoverAddress: "1"`.
+- **The return must fall in the drop-off branch's working hours.** Haleef B
+  (160798) is shut on Fridays (weekDay 5) and keeps three short shifts on
+  Saturdays; a return then is refused by `CreateBooking` with "the drop off
+  branch is not opened this day!" (`car_invalid_dropoff_datetime`), though
+  the form offers the date. The default return (three days on, at the
+  pickup's time of night) hit a Friday on 22/09, so the handover scenario
+  moves a Friday or Saturday return to the Sunday.
+- **Scenario timeouts are 3 minutes** (add2 and edit2): booking, reading the
+  details and closing ran past the default minute, and a close cut short
+  leaves the booking open (21739 once had to be closed by hand).
 - **What ending a rent-to-own booking should do to its car** (the owner's
   rules; `ownCarDetail.isRented` and the car's availability):
   - cancelled or closed **within a month of creation**, from any status →

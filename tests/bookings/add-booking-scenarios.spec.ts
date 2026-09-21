@@ -66,7 +66,10 @@ async function blockBooking(page: Page): Promise<Record<string, unknown>[]> {
  * specs after them check known issues without booking anything.
  */
 test.describe('add booking (new page): scenarios', () => {
-  test.describe.configure({ retries: 0 });
+  // Booking, checking the details and closing (for rent to own, switching
+  // the car back on) can run past the default minute on a slow pre-prod,
+  // and a close cut short leaves the booking open.
+  test.describe.configure({ retries: 0, timeout: 180_000 });
 
   const created: string[] = [];
   let form: AddBookingV2Page;
@@ -257,6 +260,16 @@ test.describe('add booking (new page): scenarios', () => {
   test('a handover in another branch, in another city', async ({ page }) => {
     const handover = data.handover;
     await form.tick('handover');
+    // Haleef B is shut on Fridays and keeps short shifts on Saturdays, and
+    // the API refuses a return then ("the drop off branch is not opened
+    // this day!"), so a return that falls on either moves to the Sunday.
+    let days = 3;
+    while ([5, 6].includes(fromPickup(days).getDay())) {
+      days++;
+    }
+    if (days !== 3) {
+      await form.setDropoff(fromPickup(days), fromPickup(3));
+    }
     await form.chooseCity(handover.pickupCity);
     await form.chooseDropoffCity(handover.dropoffCity);
     await form.chooseAlly(handover.ally);
