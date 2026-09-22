@@ -175,6 +175,13 @@ export const testData = {
     },
   },
   /**
+   * The banners specs are read-only. 163 is the newest banner today: active,
+   * a deep link to rent-to-own cars, with both images set.
+   */
+  banners: {
+    knownBanner: { id: process.env.CARWAH_BANNER_ID ?? '163' },
+  },
+  /**
    * The Add Booking scenarios on the refactored page (/bookings/add2). Each
    * books for the bookings' test customer and is closed at once. Handover
    * uses Al-nagah and Rent To Own uses Asmak in Umluj, as agreed with the
