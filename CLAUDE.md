@@ -446,15 +446,30 @@ npm run clean:cache                                       # drop the cached bund
   `rentType: "RENT_TO_OWN"`, `transmission: "manual"`,
   `availabilityStatus: false`, `years: [2021]`, `plateNo`, `acrissCode`; the
   URL keeps them under slightly different names (`allyCompanyId`, `makeId`,
-  `model`, `year`). Choosing "Active" availability sends nothing extra — it
-  is the default. **Clear sends the unfiltered query again** here (unlike
+  `model`, `year`). **Clear sends the unfiltered query again** here (unlike
   customers and partners).
-- **Five filters do nothing** (known issue): Vehicle Type, City and KM Type
-  send no query at all — the dropdown shows the choice, Search does
-  nothing; Rent/Day is left out of the query even after Enter; and Models on
-  its own is sent but ignored (it narrows only together with a Make: Suzuki +
-  Dzire = 9). `CarsPage.searchSends` records what Search sent, so those specs
-  fail with that instead of a timeout.
+- **Audited filter by filter on 22/09** (exploration only, nothing added to
+  the suite beyond the specs below). Correct, on the query, the API's rows
+  and the table alike: Ally Name (Hegazy 27, and multi-select),
+  branches (Hegazy Riyadh 10, multi), Make (Suzuki 21, multi),
+  Make + Models (Suzuki Dzire 9), Rent Type (Rental 16,333 + rent-to-own
+  447 = 16,780), Transmission (manual 458 + auto 16,322 = 16,780),
+  availability **Inactive** (90), Year (2021 612, multi 834), Acriss code
+  (DDBV 9, SCBZ 23, MBMR 16,424 — case-insensitive and matching part of a
+  code, and MBMR really does cover most of the data), Plate No (`1234`
+  90 cars, `9999999`/`ZZZ` 0 — no row or API field shows a plate, so only
+  the narrowing is checked), and combinations (ally + transmission, make +
+  year, branch + make, ally + rent type). Zero results show
+  "No records found!"; paging and page size keep the filter (`page: 2`,
+  `limit: 20` with `allyIds`); Clear restores 16,780.
+- **Seven filters do nothing** (known issues): Vehicle Type, City, KM Type
+  and Insurance Type's **Standard** and **No Insurance** send no query at
+  all — the dropdown shows the choice, Search does nothing; **Active** and
+  Rent/Day are dropped from the query that is sent (so Active returns
+  inactive cars too); and Models on its own is sent but ignored (it narrows
+  only together with a Make: Suzuki + Dzire = 9). `CarsPage.searchSends`
+  records what Search sent, so those specs fail with that instead of a
+  timeout.
 - **Details** (`/cars/<id>`, "Car Details", from `CarProfile`): Car
   Availability Status, Rent/Day, Transmission, Insurance Type and Value, Year,
   Make, Model, Acriss Code, Ally Name, Branch Name, Rent/Week, "Rent/
@@ -1064,10 +1079,23 @@ moment one starts passing — then drop the mark.
     once a booking is closed. Save is refused by the API — `EditBooking`
     answers "Invalid rental status for this action" (a red toast) and
     nothing changes (tried on 21735 with a note).
-- **Five cars filters do nothing.** Vehicle Type, City and KM Type send no
-  query when Search is pressed; Rent/Day is dropped from the query; Models
-  alone is sent but ignored (it only works with a Make). Marked `test.fail`
-  in the cars filters.
+- **Cars filters that do nothing.** Vehicle Type, City, KM Type and
+  Insurance Type's **Standard** and **No Insurance** send no query when
+  Search is pressed (only Full reaches the list, as `insuranceId: [2]`);
+  Rent/Day is dropped from the query; Models alone is sent but ignored (it
+  only works with a Make). Each marked `test.fail` in the cars filters.
+- **The "Active" availability filter is dropped from the query**, so the
+  list keeps its inactive cars: marboo7a + Active sent
+  `{ allyIds: ["155823"] }` with no `availabilityStatus` and answered 21
+  cars, **7 of them inactive** (17127, 17088, 16513, 16083, 16074…), eight
+  cells on screen reading "Inactive". Active (16,780) + Inactive (90) is
+  more than the whole list. Inactive itself works. Marked `test.fail`.
+- **The Full insurance filter returns cars that do not offer Full.** Of
+  Hegazy's 27 cars the filter answered 13: the 8 whose `carInsurances`
+  carry Full (17199, 17197, 17190, 17173, 17089, 17086, 17083, 17080) and
+  **5 that carry Standard alone** (17186, 17185, 17177, 17079, 17074). None
+  were missing, so the fault is in what the backend adds. Marked
+  `test.fail`.
 - **The cars list's Transmission column is always empty**, although every
   car has one (the API's `transmissionName`, and its details page).
   Marked `test.fail` in the cars list.

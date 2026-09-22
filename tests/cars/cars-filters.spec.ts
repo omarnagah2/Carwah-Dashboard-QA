@@ -1,5 +1,6 @@
 import { expect, test } from '../../src/fixtures/test';
 import { testData } from '../../src/config/test-data';
+import { CarDetailsPage } from '../../src/pages/car-details.page';
 import { CarsPage } from '../../src/pages/cars.page';
 
 const { knownCar } = testData.cars;
@@ -99,6 +100,17 @@ test.describe('cars filters', () => {
     expect(new Set(await cars.column('Car Availability Status'))).toEqual(new Set(['Inactive']));
   });
 
+  test('by availability (Active)', async () => {
+    test.fail(true, 'Active is dropped from the query (no availabilityStatus), so inactive cars come back too — marboo7a + Active answered 21 cars, 7 of them inactive');
+    await cars.filters.choose('Car Availability Status', 'Active');
+    const { query, cars: found } = await cars.search();
+
+    expect(query.availabilityStatus).toBe(true);
+    for (const car of found) {
+      expect(car.availabilityStatus, `car ${car.id}`).toBe(true);
+    }
+  });
+
   test('by rent type', async () => {
     await cars.filters.choose('Rent Type', 'Rent-to-Own');
     const { query, total } = await cars.search();
@@ -115,6 +127,37 @@ test.describe('cars filters', () => {
     expect(query.insuranceId).toEqual([2]);
     expect(total).toBeGreaterThan(0);
     expect(total).toBeLessThan(unfilteredTotal);
+  });
+
+  for (const option of ['Standard', 'No Insurance'] as const) {
+    test(`by insurance type (${option})`, async () => {
+      test.fail(true, `Insurance Type "${option}" sends no query at all — only Full reaches the list`);
+      await cars.filters.choose('Insurance Type', option);
+
+      const sent = await cars.searchSends();
+
+      expect(sent, 'queries sent').not.toEqual([]);
+    });
+  }
+
+  test('the Full filter returns only cars that offer Full', async ({ page }) => {
+    test.fail(true, "The API answers the Full filter with cars carrying Standard alone — 5 of Hegazy's 13 (17186, 17185, 17177, 17079, 17074)");
+    test.setTimeout(180_000);
+    await cars.filters.choose('Ally Name', knownCar.ally);
+    await cars.filters.choose('Insurance Type', 'Full');
+    const { cars: found } = await cars.search();
+    expect(found.length).toBeGreaterThan(0);
+
+    const details = new CarDetailsPage(page);
+    const withoutFull: string[] = [];
+    for (const car of found) {
+      const { carInsurances } = (await details.open(car.id)) as { carInsurances?: { insuranceName: string }[] | null };
+      if (!(carInsurances ?? []).some((insurance) => insurance.insuranceName === 'Full')) {
+        withoutFull.push(car.id);
+      }
+    }
+
+    expect(withoutFull, 'cars the Full filter returned that do not offer Full').toEqual([]);
   });
 
   test('by acriss code', async () => {
