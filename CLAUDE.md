@@ -25,6 +25,7 @@ tests/
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
+├── extra-services/ extra-services-list, extra-service-form (read-only)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -43,7 +44,9 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                companies (partners list), company-filters, company-details,
                company-form (shared by add-company and edit), add-company,
                branches (list), branch-filters, branch-details,
-               cars (list), car-filters, car-details
+               cars (list), car-filters, car-details,
+               extra-services (list), extra-service-details,
+               extra-service-form (add and edit)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -472,6 +475,49 @@ npm run clean:cache                                       # drop the cached bund
 - **Timeline** opens "Car TimeLine" (`Car ID :<id>`) from `CarAudits`.
 - **Fleet Management** opens `/cars/fleet-management`: Ally and Branches
   autocompletes and Cancel; not explored further.
+
+## Extra services (/cw/dashboard/extraservice, "Extra Service")
+
+- **Read-only.** These are the services real bookings are charged for (the
+  booking specs add GPS and a child seat), so no spec saves the form and
+  **the delete question is only ever answered with Cancel**. Each spec
+  proves it with `recordMutations`.
+- **The list shows every service** (39 today) via `ExtraServices
+  { page, limit, isActive }` — `isActive` is always `null`, and **there is
+  no filter panel at all** on this page. Columns: `#`, Service ID, Ar Title,
+  En Title, Arabic Description, English Description (both truncated with
+  `…`), Status (Active / Inactive), Actions. Page sizes 10 / 20 / 40 / 80 /
+  100, and paging keeps the page in the URL (`#page=2`).
+- **The row's own link is the only plural path**: the details page is
+  `/cw/dashboard/extraservices/<id>`, while the list, Edit and Add are all
+  `/cw/dashboard/extraservice/…`.
+- Actions: **Edit** (`/extraservice/<id>/edit`), **delete** and
+  **Timeline**. Delete opens a SweetAlert — "Are You Sure ? You Want To
+  Delete This Service", Cancel / delete — and, as on branches, a cancelled
+  alert only fades out, so `cancelDelete` waits for the overlay to lose
+  `swal-overlay--show-modal`. Timeline opens "ExtraService Timeline"
+  (`Extra Service ID :<id>`) from `ExtraServiceAudits { id }`, whose oldest
+  entry is the `System` create.
+- **Details** (`ExtraService { id }`): the heading is "ExtraService Details"
+  and its one card is headed **"Feature Details"**. It lists Service ID,
+  Arabic Description, English Description, Pay Type, Status and Show —
+  **no title at all**, although the list shows both and the API answers
+  them. **Pay Type shows the API's own key** (`one_time`), a known issue
+  below. Buttons: Edit, Back.
+- **The form** (`/extraservice/add` "Add Extra Service",
+  `/extraservice/<id>/edit` "Edit Extra Service"): `#enTitle`, `#arTitle`,
+  `textarea[name="enDescription"]` / `[name="arDescription"]`, the
+  checkboxes **Active** (`isActive`), **Show** (`isDisplayed`) and **Show On
+  Main Page** (`isSpecial`), a **Pay Type** react-select (Free, One Time,
+  Daily) and two optional images (Extra Service Image and Extra Service
+  Icon). **Save is disabled** until the form is filled on Add and until
+  something changes on Edit; **the images are not required**. Cancel returns
+  to the list.
+- Save sends **`CreateExtraService`** (`enTitle`, `arTitle`, the two
+  descriptions, `isActive`, `isDisplayed`, `isSpecial`, `payType: "free" |
+  "one_time" | "daily"`) or **`UpdateExtraService`** (the same plus
+  `extraServiceId`, `iconUrl` and `homepageIconUrl` as the URLs they were
+  loaded with). Neither is ever sent by the suite.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -1068,6 +1114,11 @@ moment one starts passing — then drop the mark.
   query when Search is pressed; Rent/Day is dropped from the query; Models
   alone is sent but ignored (it only works with a Make). Marked `test.fail`
   in the cars filters.
+- **An extra service's details page shows the raw pay type.** Pay Type reads
+  `one_time`, the API's own key, where the form spells it "One Time".
+  Marked `test.fail` in the extra services list. (The same page also lists
+  no title, and its card is headed "Feature Details" — recorded above, no
+  failing spec until the product says whether that is intended.)
 - **The cars list's Transmission column is always empty**, although every
   car has one (the API's `transmissionName`, and its details page).
   Marked `test.fail` in the cars list.

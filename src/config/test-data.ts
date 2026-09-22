@@ -175,6 +175,14 @@ export const testData = {
     },
   },
   /**
+   * The extra services specs are read-only. GPS (144) is the service the
+   * booking specs add to a booking, so it is the one read here too: Active,
+   * shown, charged once per rental.
+   */
+  extraServices: {
+    knownService: { id: process.env.CARWAH_EXTRA_SERVICE_ID ?? '144', title: 'GPS', payType: 'one_time' },
+  },
+  /**
    * The Add Booking scenarios on the refactored page (/bookings/add2). Each
    * books for the bookings' test customer and is closed at once. Handover
    * uses Al-nagah and Rent To Own uses Asmak in Umluj, as agreed with the
