@@ -25,7 +25,7 @@ tests/
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
-├── coupons/        coupons-list, coupons-filters (read-only),
+├── coupons/        coupons-list, coupons-filters, coupon-form (read-only),
 │                   coupon-lifecycle (tagged @creates-coupon: left out of
 │                   ordinary runs, since a coupon cannot be deleted)
 └── companies/      companies-list, companies-filters (read-only: partners),
@@ -578,6 +578,11 @@ npm run clean:cache                                       # drop the cached bund
   date nobody touched is left out** of the mutation (and must survive the
   edit all the same); a date that is picked is sent and saved — moving the
   end date on works and leaves the start date alone.
+- **The date pickers allow anything** (known issues below): both list
+  1900–2100 with **no day disabled**, on Create and on Edit, so a start date
+  in the past can be chosen — which the API cannot save — and an end date can
+  be put before the start (02-10 → 25-09) with Save still enabled.
+  `coupon-form.spec.ts` checks both without ever saving.
 - **A start date in the past breaks the save** (known issue below): the API
   answers `Cannot return null for non-nullable field Mutation.updateCoupon`
   (`DOWNSTREAM_SERVICE_ERROR` from `catalog_service`) with `data: null`, the
@@ -1221,6 +1226,14 @@ moment one starts passing — then drop the mark.
   refuses with `400 Boolean cannot represent a non boolean value`, and only
   then the right `isDeleted: true`. The results are correct, so only the
   network shows it. Marked `test.fail` in the branches filters.
+- **The coupon form offers dates it cannot save.** Its two pickers list
+  1900–2100 with nothing disabled, on Create Coupon and on Edit Coupon
+  alike: **a start date in the past can be picked** although the API refuses
+  it (below), and **an end date can be set before the start date** — the
+  form took 02-10-2026 → 25-09-2026 with Save enabled and no complaint, and
+  the end picker disables nothing once a start is chosen. The start date
+  should not be offered in the past at all (the owner, 22/09). Both marked
+  `test.fail` in `coupon-form.spec.ts`, which never saves.
 - **A coupon whose start date is moved into the past cannot be saved, and
   nothing says so.** `UpdateCoupon` with `startAt` before today is answered
   `{"data": null, "errors": [{"message": "Cannot return null for
