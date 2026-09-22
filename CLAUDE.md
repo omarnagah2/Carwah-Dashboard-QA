@@ -502,8 +502,14 @@ npm run clean:cache                                       # drop the cached bund
   and its one card is headed **"Feature Details"**. It lists Service ID,
   Arabic Description, English Description, Pay Type, Status and Show —
   **no title at all**, although the list shows both and the API answers
-  them. **Pay Type shows the API's own key** (`one_time`), a known issue
-  below. Buttons: Edit, Back.
+  them — on service 114 the list reads "زود هوا / Air pump1" while its page
+  only shows the description "زود هوا تاني / air pump device new", so the
+  page never says what the service is called. **Pay Type shows the API's own
+  key** (`one_time`, `daily`) rather than the form's wording. **Both were
+  put to the owner on 22/09 and accepted as too small to report**, so the
+  specs expect the page as it is: the six labels it does show, and the key.
+  The card being headed "Feature Details" goes with them. Buttons: Edit,
+  Back.
 - **The form** (`/extraservice/add` "Add Extra Service",
   `/extraservice/<id>/edit` "Edit Extra Service"): `#enTitle`, `#arTitle`,
   `textarea[name="enDescription"]` / `[name="arDescription"]`, the
@@ -1114,11 +1120,6 @@ moment one starts passing — then drop the mark.
   query when Search is pressed; Rent/Day is dropped from the query; Models
   alone is sent but ignored (it only works with a Make). Marked `test.fail`
   in the cars filters.
-- **An extra service's details page shows the raw pay type.** Pay Type reads
-  `one_time`, the API's own key, where the form spells it "One Time".
-  Marked `test.fail` in the extra services list. (The same page also lists
-  no title, and its card is headed "Feature Details" — recorded above, no
-  failing spec until the product says whether that is intended.)
 - **The cars list's Transmission column is always empty**, although every
   car has one (the API's `transmissionName`, and its details page).
   Marked `test.fail` in the cars list.

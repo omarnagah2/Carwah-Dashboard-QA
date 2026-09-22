@@ -88,7 +88,8 @@ test.describe('extra services list', () => {
     expect(await details.detail('Arabic Description')).toBe(service.arDescription);
     expect(await details.detail('Status')).toBe(service.isActive ? 'Active' : 'Inactive');
     expect(await details.detail('Show')).toBe(service.isDisplayed ? 'Active' : 'Inactive');
-    // The card lists no title at all, though the list shows both.
+    // The card lists no title at all, though the list shows both — accepted
+    // by the owner as it is, so the labels are pinned here.
     expect(await details.labels()).toEqual([
       'Service ID',
       'Arabic Description',
@@ -99,13 +100,14 @@ test.describe('extra services list', () => {
     ]);
   });
 
-  test('the details page names the pay type in words', async ({ page }) => {
-    test.fail(true, 'Pay Type shows the API\'s own key — "one_time" instead of "One Time" (the form spells it out)');
+  test('the details page shows the pay type as the API keys it', async ({ page }) => {
     const details = new ExtraServiceDetailsPage(page);
 
     const service = await details.open(knownService.id);
 
-    expect(service.payType).toBe('one_time');
-    expect(await details.detail('Pay Type')).toBe('One Time');
+    // The key itself (`one_time`), not the form's wording ("One Time") —
+    // accepted by the owner as too small to report.
+    expect(service.payType).toBe(knownService.payType);
+    expect(await details.detail('Pay Type')).toBe(knownService.payType);
   });
 });
