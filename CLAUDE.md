@@ -1025,8 +1025,6 @@ moment one starts passing — then drop the mark.
   22/09):
   - the page throws `Cannot read properties of undefined (reading 'push')`
     on load — **reported**;
-  - **changing the handover fee does not reprice**: Rent sends the new fee
-    (50) while the summary keeps the old one (30, total 552) — **reported**;
   - (backend, no spec) closing a rent-to-own booking leaves its car
     Inactive — reported by the owner;
   - (backend, no spec) a rent-to-own car can stay `isRented: true` with
@@ -1051,7 +1049,9 @@ moment one starts passing — then drop the mark.
   delivery location moves the point back to the city centre; the summary's
   Car Delivery section totals extras and delivery together. "Suzuki -
   Dzire - s - 2021" is a test car's name. **"Paymet Method" is fixed**
-  (now "Payment Method").
+  (now "Payment Method"), and so is **the handover fee** (22/09): changing
+  it from 30 to 50 now reprices at once (552 → 575) and Rent sends 50; the
+  old `test.fail` is an ordinary check now.
 - **New Edit Booking (`/bookings/<id>/edit2`)**:
   - after a car (or partner) change **the summary shows the old daily
     price** (99 with a 1% "No dis." discount) but Save charges the new

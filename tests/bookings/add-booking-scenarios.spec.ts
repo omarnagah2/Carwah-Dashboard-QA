@@ -515,8 +515,8 @@ test.describe('add booking (new page): known issues', () => {
     expect(await new BookingDetailsPage(page).detail('Return branch name')).toBe(data.handover.dropoffBranch);
   });
 
+  // Was a known issue (the summary kept the old fee); fixed on 22/09, kept as a check.
   test('changing the handover fee reprices the booking', async ({ page }) => {
-    test.fail(true, 'A new handover fee is sent with Rent but the summary keeps the old one — the customer sees a different price');
     const held = await blockBooking(page);
     const handover = data.handover;
     await start();
@@ -528,13 +528,18 @@ test.describe('add booking (new page): known issues', () => {
     await form.chooseCar(handover.car, handover.dailyPrice);
     await form.chooseDropoffBranch(handover.dropoffBranch);
     await form.chooseInsurance('Standard');
+    const before = form.price();
+    expect(before.handoverPrice).toBe(handover.fee);
 
     await form.handoverFee.fill('50');
+
+    // Repriced at once: 20 more, plus VAT (552 → 575 today).
+    await expect.poll(() => form.price().handoverPrice, { timeout: 10_000 }).toBe(50);
+    expect(form.price().totalPrice).toBe(money(before.totalPrice + (50 - handover.fee) * 1.15));
+    await expect.poll(() => form.summary(), { timeout: 5_000 }).toContain('Car handover fee 50 SR');
     await form.rentButton.click();
     await expect.poll(() => held.length).toBe(1);
-
     expect(held[0].handoverPrice).toBe(50);
-    await expect.poll(() => form.summary(), { timeout: 5_000 }).toContain('Car handover fee 50 SR');
   });
 
   // Was a known issue (Rent enabled with no plan); fixed on 21/09, kept as a check.
