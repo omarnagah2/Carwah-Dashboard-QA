@@ -25,6 +25,7 @@ tests/
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
+├── packages/       packages (read-only: the Highly requested card)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -43,7 +44,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                companies (partners list), company-filters, company-details,
                company-form (shared by add-company and edit), add-company,
                branches (list), branch-filters, branch-details,
-               cars (list), car-filters, car-details
+               cars (list), car-filters, car-details, packages
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -472,6 +473,32 @@ npm run clean:cache                                       # drop the cached bund
 - **Timeline** opens "Car TimeLine" (`Car ID :<id>`) from `CarAudits`.
 - **Fleet Management** opens `/cars/fleet-management`: Ally and Branches
   autocompletes and Cancel; not explored further.
+
+## Packages (/cw/dashboard/packages)
+
+- **Not a list at all**: one card, **Highly requested**, holding a row per
+  featured rental length — how many months it runs for and which partners
+  offer it. No table, no filter panel, no pagination. It loads
+  `GetHighlyRequestedPackages` (rows of `id`, `monthsPackage`,
+  `localizedPackage`, `allyCompanies`) and `AllyCompanies { limit: 1000 }`
+  for the partner list. Pre-prod has one row today: **1 month, Hegazy Cars**.
+- **Read-only specs.** The card decides what the customer app features, so
+  **no spec presses the check that saves**, and the bin is only pressed with
+  every mutation held back (`PackagesPage.pressDelete`).
+- A row is **read-only until its pencil is pressed** (both react-selects
+  carry `disabled`). Editing then enables them, **takes the Add Row icon
+  away** and turns the pencil into a **check** — which keeps the title
+  `edit`, while the bin loses its title. The icons are
+  `<svg title="Add Row" | "edit" | "Delete Row">` with class
+  `MuiSvgIcon-root pointer`, **not buttons**.
+- The months select offers **only the lengths not already featured** (with
+  1 month taken it lists 2–12 and 24); the partners select lists every ally,
+  `all` first (219 today), as chips.
+- **Add Row** opens an empty, editable row and sends nothing; its own bin
+  takes it away again, still silently. The check sends
+  **`UpdateHighlyRequestedPackage { id, package, allyCompanyIds }`**.
+- **The bin on a saved row sends `DeleteHighlyRequestedPackage { id }` at
+  once, with no question** — a known issue below.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -1068,6 +1095,13 @@ moment one starts passing — then drop the mark.
   query when Search is pressed; Rent/Day is dropped from the query; Models
   alone is sent but ignored (it only works with a Make). Marked `test.fail`
   in the cars filters.
+- **A featured package is deleted without being asked about.** On the
+  packages page the bin sends `DeleteHighlyRequestedPackage { id }` the
+  moment it is clicked — no SweetAlert, no dialog, no undo — although every
+  other delete in the dashboard (branches, coupons, extra services,
+  banners, customers) asks first. One stray click drops a length the
+  customer app features. Marked `test.fail` in the packages spec, which
+  presses the bin only with mutations held back.
 - **The cars list's Transmission column is always empty**, although every
   car has one (the API's `transmissionName`, and its details page).
   Marked `test.fail` in the cars list.
