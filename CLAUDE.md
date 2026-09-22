@@ -25,7 +25,9 @@ tests/
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
-├── coupons/        coupons-list, coupons-filters (read-only)
+├── coupons/        coupons-list, coupons-filters (read-only),
+│                   coupon-lifecycle (tagged @creates-coupon: left out of
+│                   ordinary runs, since a coupon cannot be deleted)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -46,7 +48,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                branches (list), branch-filters, branch-details,
                cars (list), car-filters, car-details,
                coupons (list), coupon-filters, coupon-details,
-               coupon-statistics
+               coupon-statistics, coupon-form (add and edit)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -60,6 +62,7 @@ src/reporters/ environment-classifier (copied from Carwah UI)
 npx playwright test
 npx playwright test --grep-invert "booking lifecycle"   # without creating a booking
 RUN_CREATE_PARTNER=1 npx playwright test --grep @creates-partner  # add a partner
+RUN_CREATE_COUPON=1 npx playwright test --grep @creates-coupon    # add a coupon
 npm run typecheck
 npm run clean:cache                                       # drop the cached bundle
 ```
@@ -545,6 +548,42 @@ npm run clean:cache                                       # drop the cached bund
   checkbox, **Save** (disabled until the form is filled) and Cancel. Edit
   loads `CouponDetails`, `CompaniesName { limit: 500 }`, `ActiveAgencies`,
   `Branches`, `CarVersions` and `AllAreas`.
+  **`#discountValue` is not there until a Type is chosen** — only Percentage
+  and Fixed value have one — so the Type is picked first. The dates open the
+  customer form's MUI picker (year, month, day, **Ok**; `pickCalendarDate`).
+
+### Adding and editing a coupon (`coupon-lifecycle.spec.ts`, `@creates-coupon`)
+
+- **A coupon cannot be deleted** — no delete in the dashboard and none in the
+  API — so, like adding a partner, this spec is **kept out of ordinary runs**
+  and run on purpose: `RUN_CREATE_COUPON=1 npx playwright test --grep
+  @creates-coupon`. Every run creates one real coupon and **deactivates it at
+  the end**; `afterAll` deactivates it even when a step fails, so nothing the
+  suite made can ever be redeemed on a real booking. Serial, never retried.
+- **The data is generated per run** (`testData.coupons.newCoupon()`):
+  `auto-coupon-<7 digits>` (the time), Percentage 10%, running from today for
+  a week, one use in total and one per customer, no minimum rent — then the
+  edit raises it to 15% and two uses per customer. Coupons 585–588 were made
+  while writing this, all switched off.
+- **Save sends `CreateCoupons`** (plural) with the whole form —
+  `code`, `discountType: "percentage"`, `discountValue`, `startAt`
+  (`DD/MM/YYYYT00:00:00`) and `expireAt` (`…T23:59:00`), `numOfUsages`,
+  `numOfUsagesPerUser`, `minRentPrice`, `maxLimitValue`, `isMonthly`,
+  `forNewCustomers`, `paymentMethod: "ALL"`, `paymentBrands` and the empty
+  `allyCompanyIds` / `cityIds` / `branchIds` / `carVersionIds` /
+  `agencyIds` — and the page returns to the list at once. **Read the answer
+  through a route** (`CouponFormPage.save`): after that navigation the body
+  is gone ("No resource with given identifier found").
+- **An edit sends `UpdateCoupon`** with `couponId` and the same fields —
+  **except the dates**: `startAt` and `expireAt` are left out entirely, so an
+  edit cannot move them (the spec checks the saved coupon keeps them).
+- **The switch's Yes sends `UpdateCoupon { couponId, isActive: false }`** and
+  toasts "Deactivated.successfully"; the row's switch is then off and the
+  API's row reads `isActive: false`. The list has no Status column, so that
+  is where a coupon's state is read.
+- **A coupon with nothing limiting it reads `All` as plain text**, not as a
+  badge — badges are only for real values (`Riyadh`, `Jeddah`), and an empty
+  row (Agencies) shows nothing at all.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -623,11 +662,11 @@ npm run clean:cache                                       # drop the cached bund
 ### The refactored Add Booking (`/bookings/add2`, `add-booking-scenarios.spec.ts`)
 
 - **Every scenario books for real** for the test customer and is **closed
-  straight after** (afterEach), as agreed with the owner — 11 bookings a run:
-  daily with no extras / with extras / without Unlimited KM / with Full
-  insurance, delivery,
-  handover in another branch (another city), monthly, monthly in
-  installments, rent to own, a suggested daily price, online payment.
+  straight after** (afterEach), as agreed with the owner — 12 bookings a run:
+  daily with no extras / with extras / without Unlimited KM / with a coupon /
+  with Full insurance, delivery, handover in another branch (another city),
+  monthly, monthly in installments, rent to own, a suggested daily price,
+  online payment.
   Never retried. First runs: 21696–21703, 21707–21710; a full run on 22/09
   was 21748–21758. Checks that book
   nothing: Rent waits for insurance, 7 days at the weekly rate (88), an
@@ -711,6 +750,19 @@ npm run clean:cache                                       # drop the cached bund
   The rent-to-own scenario checks all of this (`aboutPrice`, which allows
   the double space in `Grand Total  + Vat`, and `rentalInstallments` —
   its rows are `tr`s outside any `tbody`).
+- **A coupon** is typed into "Discount Coupon" and applied
+  (`CarCouponAvailability { carId, couponCode }` → `status`). A coupon the
+  car accepts is followed by a `GetRentPrice` carrying `couponCode` and
+  `couponDiscount`, so `applyCoupon` waits for it; an unknown one only
+  answers "Invalid coupon" and never reprices. **The discount comes off the
+  rent alone** — what is added to it (extras, Unlimited KM, insurance) is
+  charged in full: `abdo_2001` (50%) turned 297 + 15 into 148.5 + 15, VAT
+  24.53, due 188.03. Rent then sends `couponId` (a number). **A coupon can be
+  valid and still discount nothing**: `shahry` only redeems over 2000 SAR, so
+  a three-day booking shows "To redeem the coupon, your rent must exceed 2000
+  SAR" (`couponErrorMessage`) with "Coupon Discount 0 SR" in the summary and
+  the price unchanged. Both are pinned in `testData.addBooking.coupons`,
+  chosen for having no ally, city, branch, car or new-customer limit.
 - **Delivery**: a Google map with "Enter a location" (Places autocomplete,
   `.pac-item`); the fee is by distance (10 from the centre, 20 to Kingdom
   Centre). Sends `deliverType: "one_way"`, `deliverLat/Lng`, `deliveryPrice`.

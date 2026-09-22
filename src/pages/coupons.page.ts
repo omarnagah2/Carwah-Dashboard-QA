@@ -54,6 +54,27 @@ export class CouponsPage extends ListPage {
     return this.rowOf(couponId).locator(`input[type="checkbox"][name="${couponId}"]`);
   }
 
+  /**
+   * Flips a coupon's switch and answers the question with **Yes**, so the
+   * coupon really is deactivated — only the lifecycle spec does this, and
+   * only to the coupon it created. Returns the mutation that went out.
+   */
+  async deactivate(couponId: string): Promise<{ operation: string; sent: Record<string, unknown> }> {
+    await expect(this.activeSwitch(couponId)).toBeChecked();
+    await this.activeSwitch(couponId).click();
+    await expect(this.deactivateDialog).toBeVisible();
+    const answered = this.page.waitForResponse(
+      (r) => r.url().includes('/graphql') && (r.request().postDataJSON()?.query ?? '').trimStart().startsWith('mutation'),
+      { timeout: 30_000 },
+    );
+    await this.deactivateDialog.getByRole('button', { name: 'Yes', exact: true }).click();
+    const response = await answered;
+    const body = await response.json();
+    const [answer] = Object.values(body.data ?? {}) as { errors?: unknown[]; status?: string }[];
+    expect(answer?.errors ?? [], `deactivating answered ${JSON.stringify(body).slice(0, 300)}`).toEqual([]);
+    return { operation: response.request().postDataJSON().operationName, sent: response.request().postDataJSON().variables };
+  }
+
   /** Opens a coupon's Timeline and returns what `CouponAudits` answered. */
   async openTimeline(couponId: string): Promise<CouponAudit[]> {
     const audits = this.page.waitForResponse((r) => isOperation(r, 'CouponAudits'), { timeout: 30_000 });

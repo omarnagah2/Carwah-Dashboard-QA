@@ -32,14 +32,23 @@ export class CouponDetailsPage extends BasePage {
     return readDetail(this.page, label);
   }
 
-  /** The badges beside City, Ally or Agencies — `["Riyadh", "Jeddah"]`, or `["All"]`. */
+  /**
+   * What is listed beside City, Ally or Agencies. A coupon limited to some of
+   * them shows one **badge** each (`["Riyadh", "Jeddah"]`); one limited to
+   * none shows the plain word `All`, and an empty row gives `[]`.
+   */
   async chips(label: 'City' | 'Ally' | 'Agencies'): Promise<string[]> {
     const item = this.page
       .locator('li.MuiListItem-root')
       .filter({ hasNot: this.page.locator('span.text-align-localized') })
       .filter({ has: this.page.getByText(label, { exact: true }) })
       .first();
-    return (await item.locator('span.badge').allInnerTexts()).map((text) => text.trim());
+    const badges = (await item.locator('span.badge').allInnerTexts()).map((text) => text.trim());
+    if (badges.length > 0) {
+      return badges;
+    }
+    const value = (await item.locator('span').nth(1).innerText()).trim();
+    return value ? [value] : [];
   }
 }
 
