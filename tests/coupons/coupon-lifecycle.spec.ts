@@ -3,6 +3,7 @@ import { testData } from '../../src/config/test-data';
 import { CouponDetailsPage } from '../../src/pages/coupon-details.page';
 import { CouponFormPage } from '../../src/pages/coupon-form.page';
 import { CouponsPage } from '../../src/pages/coupons.page';
+import { pickCalendarDate } from '../../src/pages/date-time-picker.component';
 
 const coupon = testData.coupons.newCoupon();
 
@@ -143,8 +144,8 @@ test.describe('coupon lifecycle @creates-coupon', () => {
     });
     const details = new CouponDetailsPage(page);
     const saved = await details.open(couponId);
-    // UpdateCoupon leaves the dates out of what it sends, so an edit must at
-    // least not lose them.
+    // A date nobody touched is left out of the mutation, and must survive
+    // the edit all the same.
     expect(sent).not.toHaveProperty('expireAt');
     expect(saved.startAt).toBe(before.startAt);
     expect(saved.expireAt).toBe(before.expireAt);
@@ -167,6 +168,40 @@ test.describe('coupon lifecycle @creates-coupon', () => {
       oldData: { discount_value: expect.anything() },
       newData: { discount_value: expect.anything() },
     });
+  });
+
+  test('moves the end date on', async ({ page }) => {
+    const form = new CouponFormPage(page);
+    const before = await form.openEdit(couponId);
+    const end = new Date(Date.parse(String(before.expireAt)));
+    const moved = new Date(end.getFullYear(), end.getMonth() + 1, end.getDate());
+
+    await pickCalendarDate(page, form.endDate, moved);
+    const { sent } = await form.save('UpdateCoupon');
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    expect(sent.expireAt).toBe(`${pad(moved.getDate())}/${pad(moved.getMonth() + 1)}/${moved.getFullYear()}T23:59:00`);
+    const saved = await new CouponDetailsPage(page).open(couponId);
+    expect(saved.expireAt).not.toBe(before.expireAt);
+    expect(String(saved.expireAt).slice(0, 10)).toBe(`${moved.getFullYear()}-${pad(moved.getMonth() + 1)}-${pad(moved.getDate())}`);
+    expect(saved.startAt, 'the start date is untouched').toBe(before.startAt);
+  });
+
+  test('moves the start date into the past', async ({ page }) => {
+    test.fail(
+      true,
+      'A start date in the past breaks the API ("Cannot return null for non-nullable field Mutation.updateCoupon") and the page says nothing at all — the whole save is lost, dates and fields alike',
+    );
+    const form = new CouponFormPage(page);
+    const before = await form.openEdit(couponId);
+    const today = new Date();
+
+    await pickCalendarDate(page, form.startDate, new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1));
+    await form.saveButton.click();
+    await page.waitForTimeout(5_000);
+
+    const saved = await new CouponDetailsPage(page).open(couponId);
+    expect(saved.startAt).not.toBe(before.startAt);
   });
 
   test('deactivates it', async ({ page }) => {

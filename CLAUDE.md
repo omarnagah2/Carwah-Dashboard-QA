@@ -574,9 +574,16 @@ npm run clean:cache                                       # drop the cached bund
   `agencyIds` — and the page returns to the list at once. **Read the answer
   through a route** (`CouponFormPage.save`): after that navigation the body
   is gone ("No resource with given identifier found").
-- **An edit sends `UpdateCoupon`** with `couponId` and the same fields —
-  **except the dates**: `startAt` and `expireAt` are left out entirely, so an
-  edit cannot move them (the spec checks the saved coupon keeps them).
+- **An edit sends `UpdateCoupon`** with `couponId` and the same fields. **A
+  date nobody touched is left out** of the mutation (and must survive the
+  edit all the same); a date that is picked is sent and saved — moving the
+  end date on works and leaves the start date alone.
+- **A start date in the past breaks the save** (known issue below): the API
+  answers `Cannot return null for non-nullable field Mutation.updateCoupon`
+  (`DOWNSTREAM_SERVICE_ERROR` from `catalog_service`) with `data: null`, the
+  dashboard shows nothing at all, and **the whole edit is lost** — the other
+  fields with it. A start date further ahead saves normally, so it is the
+  past that breaks it.
 - **The switch's Yes sends `UpdateCoupon { couponId, isActive: false }`** and
   toasts "Deactivated.successfully"; the row's switch is then off and the
   API's row reads `isActive: false`. The list has no Status column, so that
@@ -1214,6 +1221,17 @@ moment one starts passing — then drop the mark.
   refuses with `400 Boolean cannot represent a non boolean value`, and only
   then the right `isDeleted: true`. The results are correct, so only the
   network shows it. Marked `test.fail` in the branches filters.
+- **A coupon whose start date is moved into the past cannot be saved, and
+  nothing says so.** `UpdateCoupon` with `startAt` before today is answered
+  `{"data": null, "errors": [{"message": "Cannot return null for
+  non-nullable field Mutation.updateCoupon", "extensions": {"code":
+  "DOWNSTREAM_SERVICE_ERROR", "serviceName": "catalog_service"}}]}` — an
+  error, not a refusal with a reason — and the dashboard shows no toast and
+  no field error, so the form looks saved. **Everything else in that save is
+  lost too** (a new end date in the same save did not stick). Tried on the
+  suite's own coupon 588: start 22/09 → 21/09 failed, while 22/09 → 25/09
+  and an end date two months on both saved. Marked `test.fail` in the coupon
+  lifecycle.
 - **A refused partner save is silent.** Saving Edit Company with a manager
   name over 20 characters is rejected by the API, but the dashboard shows no
   toast and no field error — the form simply stays as it was. Marked
