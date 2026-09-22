@@ -175,6 +175,19 @@ export const testData = {
     },
   },
   /**
+   * The coupons specs are read-only. `knownCoupon` is a Free Delivery coupon
+   * limited to Riyadh and Jeddah, `allyCoupon` one of the eleven belonging to
+   * an ally (so the Ally Name filter has something to find), and `usedCoupon`
+   * the only coupon found with a booking behind it, which is what the
+   * Statistics page is checked against.
+   */
+  coupons: {
+    knownCoupon: { id: process.env.CARWAH_COUPON_ID ?? '582', code: 'freeship', type: 'Free Delivery', cities: ['Riyadh', 'Jeddah'] },
+    allyCoupon: { ally: 'khaled co', allyId: '155770', couponId: '584', code: 'free days khaled' },
+    usedCoupon: { id: '50', usages: 1, users: 1, sales: 30 },
+    city: 'Riyadh',
+  },
+  /**
    * The Add Booking scenarios on the refactored page (/bookings/add2). Each
    * books for the bookings' test customer and is closed at once. Handover
    * uses Al-nagah and Rent To Own uses Asmak in Umluj, as agreed with the

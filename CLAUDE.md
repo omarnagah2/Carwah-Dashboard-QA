@@ -25,6 +25,7 @@ tests/
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
+├── coupons/        coupons-list, coupons-filters (read-only)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -43,7 +44,9 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                companies (partners list), company-filters, company-details,
                company-form (shared by add-company and edit), add-company,
                branches (list), branch-filters, branch-details,
-               cars (list), car-filters, car-details
+               cars (list), car-filters, car-details,
+               coupons (list), coupon-filters, coupon-details,
+               coupon-statistics
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -487,6 +490,61 @@ npm run clean:cache                                       # drop the cached bund
 - **Timeline** opens "Car TimeLine" (`Car ID :<id>`) from `CarAudits`.
 - **Fleet Management** opens `/cars/fleet-management`: Ally and Branches
   autocompletes and Cancel; not explored further.
+
+## Coupons (/cw/dashboard/coupons)
+
+- **Read-only.** Coupons belong to real allies and price real bookings, so no
+  spec saves the coupon form or confirms the row's switch. The switch is
+  pressed only far enough to read its question, which is answered **No**.
+- **The list shows every coupon** (350 today, newest id first) via
+  `Coupons { page, limit }`; the page also loads `CompaniesName { limit: 10 }`
+  and `DashboardAreasQuery { limit: 10 }` for the filter dropdowns. The table
+  is found by its `Coupon Type` header (a hidden ratings table comes first, as
+  on bookings). Columns: `#`, Coupon, Coupon Type, Start date, End date,
+  Actions. Page sizes 10 / 20 / 40 / 80 / 100; paging keeps the page in the
+  URL (`#page=2`). **The column headers are buttons but sort nothing** — a
+  click sends no query and the rows do not move.
+- A row links to the coupon (`/coupons/<id>`), and its Actions are **Edit**
+  (`/coupons/<id>/edit`), **Statistics** (`/coupons/<id>/statistics`), the
+  **active switch** (`input[name="<id>"]`) and **Timeline**. The API's row
+  carries `code`, `discountType`, `discountValue`, `isActive`, `startAt`,
+  `expireAt`, `numOfUsages`, `numOfUsagesPerUser`, `maxLimitValue`, `areas`.
+- **The switch asks first**: a MUI dialog (not a SweetAlert) — "Are You Sure ?
+  you want to deactivate this coupon", **No** / **Yes** — so nothing changes
+  until Yes. The click also fires `CouponAudits` for that coupon, the
+  Timeline's own query, which nothing on screen uses.
+- **Filters** (`CouponFilters`): `#code` (Coupon Code) and two react-selects,
+  **Ally Name** and **City**. Search sends `code` (partial: `free` finds 17),
+  `allyCompanyIds: ["155770"]` or `cityIds: ["1"]`; the URL keeps them as
+  JSON, with the city under the singular `cityId`. **Clear sends the
+  unfiltered query again** (as on cars) and empties the URL. Hegazy Cars has
+  no coupons at all (0 results); `khaled co` has 11.
+- **Details** (`/coupons/<id>`, "Coupon Details", from `CouponDetails { id }`
+  and `AllAgencies`): six `li.list_item_info` items — Coupon Code, No. of
+  total usage, No. of usage per user, Type, Start date, End date — then
+  **City, Ally and Agencies in the same list but as badges**
+  (`span.badge`, `CouponDetailsPage.chips`), reading `All` when the coupon is
+  not limited. Buttons: Edit, Back. A coupon with no `areas` is offered in
+  every city, so a city filter legitimately returns it.
+- **Statistics** (`/coupons/<id>/statistics`): `CouponStatistics { couponId }`
+  for the three counters (No. of total usages, No. of users, Coupon sales) and
+  `GetBookingsQuery { page: 1, limit: 50, couponId }` for the bookings that
+  used it — `#`, Booking ID, Customer, Pickup Time, Discount Value, Booking
+  Status. **A coupon nobody has used answers `couponStatistics: null`**, and
+  the page then shows three zeroes and "No records found!" — most coupons on
+  pre-prod are in that state. Coupon **50** is the one with a booking behind
+  it (1 usage, 1 user, 30 sales, booking QH21), so the specs check it.
+- **The coupon form** (`/coupons/add` "Create Coupon", `/coupons/<id>/edit`
+  "Edit Coupon", not covered by a spec yet): a Monthly checkbox
+  (`input[name="is_monthly"]`), `#code`, the react-selects Ally Name,
+  Agencies, Ally's branches, Car Version, City, **Type** (Percentage, Fixed
+  value, Free delivery, Free handover, Freedays), Payment Method (Cash /
+  Online) and paymentbrand (APPLE PAY, MADA, CREDIT CARD, Tamara, Tabby);
+  `input[name="start"]` / `input[name="enddate"]`, `#maxLimitValue`,
+  `#numOfUsages`, `#numOfUsagesPerUser`, `#minRentPrice`, a New Customers
+  checkbox, **Save** (disabled until the form is filled) and Cancel. Edit
+  loads `CouponDetails`, `CompaniesName { limit: 500 }`, `ActiveAgencies`,
+  `Branches`, `CarVersions` and `AllAreas`.
 
 ## Printing (`BookingDetailsPage.print`)
 
