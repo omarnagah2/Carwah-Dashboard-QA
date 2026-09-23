@@ -175,6 +175,14 @@ export const testData = {
     },
   },
   /**
+   * The extra services specs are read-only. GPS (144) is the service the
+   * booking specs add to a booking, so it is the one read here too: Active,
+   * shown, charged once per rental.
+   */
+  extraServices: {
+    knownService: { id: process.env.CARWAH_EXTRA_SERVICE_ID ?? '144', title: 'GPS', payType: 'one_time' },
+  },
+  /**
    * The coupons specs are read-only. `knownCoupon` is a Free Delivery coupon
    * limited to Riyadh and Jeddah, `allyCoupon` one of the eleven belonging to
    * an ally (so the Ally Name filter has something to find), and `usedCoupon`
