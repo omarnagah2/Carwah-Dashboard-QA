@@ -26,6 +26,9 @@ tests/
 ├── branches/       branches-list, branches-filters (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
 ├── extra-services/ extra-services-list, extra-service-form (read-only)
+├── coupons/        coupons-list, coupons-filters, coupon-form (read-only),
+│                   coupon-lifecycle (tagged @creates-coupon: left out of
+│                   ordinary runs, since a coupon cannot be deleted)
 └── companies/      companies-list, companies-filters (read-only: partners),
                     company-edit (writes, but only to the suite's own partner),
                     add-company (tagged @creates-partner: left out of ordinary
@@ -47,6 +50,8 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                cars (list), car-filters, car-details,
                extra-services (list), extra-service-details,
                extra-service-form (add and edit)
+               coupons (list), coupon-filters, coupon-details,
+               coupon-statistics, coupon-form (add and edit)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
 src/utils/     graphql.ts (isOperation), static-cache.ts, api-throttle.ts, text.ts,
                mutations.ts (recordMutations: prove a spec wrote nothing)
@@ -60,6 +65,7 @@ src/reporters/ environment-classifier (copied from Carwah UI)
 npx playwright test
 npx playwright test --grep-invert "booking lifecycle"   # without creating a booking
 RUN_CREATE_PARTNER=1 npx playwright test --grep @creates-partner  # add a partner
+RUN_CREATE_COUPON=1 npx playwright test --grep @creates-coupon    # add a coupon
 npm run typecheck
 npm run clean:cache                                       # drop the cached bundle
 ```
@@ -449,15 +455,30 @@ npm run clean:cache                                       # drop the cached bund
   `rentType: "RENT_TO_OWN"`, `transmission: "manual"`,
   `availabilityStatus: false`, `years: [2021]`, `plateNo`, `acrissCode`; the
   URL keeps them under slightly different names (`allyCompanyId`, `makeId`,
-  `model`, `year`). Choosing "Active" availability sends nothing extra — it
-  is the default. **Clear sends the unfiltered query again** here (unlike
+  `model`, `year`). **Clear sends the unfiltered query again** here (unlike
   customers and partners).
-- **Five filters do nothing** (known issue): Vehicle Type, City and KM Type
-  send no query at all — the dropdown shows the choice, Search does
-  nothing; Rent/Day is left out of the query even after Enter; and Models on
-  its own is sent but ignored (it narrows only together with a Make: Suzuki +
-  Dzire = 9). `CarsPage.searchSends` records what Search sent, so those specs
-  fail with that instead of a timeout.
+- **Audited filter by filter on 22/09** (exploration only, nothing added to
+  the suite beyond the specs below). Correct, on the query, the API's rows
+  and the table alike: Ally Name (Hegazy 27, and multi-select),
+  branches (Hegazy Riyadh 10, multi), Make (Suzuki 21, multi),
+  Make + Models (Suzuki Dzire 9), Rent Type (Rental 16,333 + rent-to-own
+  447 = 16,780), Transmission (manual 458 + auto 16,322 = 16,780),
+  availability **Inactive** (90), Year (2021 612, multi 834), Acriss code
+  (DDBV 9, SCBZ 23, MBMR 16,424 — case-insensitive and matching part of a
+  code, and MBMR really does cover most of the data), Plate No (`1234`
+  90 cars, `9999999`/`ZZZ` 0 — no row or API field shows a plate, so only
+  the narrowing is checked), and combinations (ally + transmission, make +
+  year, branch + make, ally + rent type). Zero results show
+  "No records found!"; paging and page size keep the filter (`page: 2`,
+  `limit: 20` with `allyIds`); Clear restores 16,780.
+- **Seven filters do nothing** (known issues): Vehicle Type, City, KM Type
+  and Insurance Type's **Standard** and **No Insurance** send no query at
+  all — the dropdown shows the choice, Search does nothing; **Active** and
+  Rent/Day are dropped from the query that is sent (so Active returns
+  inactive cars too); and Models on its own is sent but ignored (it narrows
+  only together with a Make: Suzuki + Dzire = 9). `CarsPage.searchSends`
+  records what Search sent, so those specs fail with that instead of a
+  timeout.
 - **Details** (`/cars/<id>`, "Car Details", from `CarProfile`): Car
   Availability Status, Rent/Day, Transmission, Insurance Type and Value, Year,
   Make, Model, Acriss Code, Ally Name, Branch Name, Rent/Week, "Rent/
@@ -524,6 +545,108 @@ npm run clean:cache                                       # drop the cached bund
   "one_time" | "daily"`) or **`UpdateExtraService`** (the same plus
   `extraServiceId`, `iconUrl` and `homepageIconUrl` as the URLs they were
   loaded with). Neither is ever sent by the suite.
+## Coupons (/cw/dashboard/coupons)
+
+- **Read-only.** Coupons belong to real allies and price real bookings, so no
+  spec saves the coupon form or confirms the row's switch. The switch is
+  pressed only far enough to read its question, which is answered **No**.
+- **The list shows every coupon** (350 today, newest id first) via
+  `Coupons { page, limit }`; the page also loads `CompaniesName { limit: 10 }`
+  and `DashboardAreasQuery { limit: 10 }` for the filter dropdowns. The table
+  is found by its `Coupon Type` header (a hidden ratings table comes first, as
+  on bookings). Columns: `#`, Coupon, Coupon Type, Start date, End date,
+  Actions. Page sizes 10 / 20 / 40 / 80 / 100; paging keeps the page in the
+  URL (`#page=2`). **The column headers are buttons but sort nothing** — a
+  click sends no query and the rows do not move.
+- A row links to the coupon (`/coupons/<id>`), and its Actions are **Edit**
+  (`/coupons/<id>/edit`), **Statistics** (`/coupons/<id>/statistics`), the
+  **active switch** (`input[name="<id>"]`) and **Timeline**. The API's row
+  carries `code`, `discountType`, `discountValue`, `isActive`, `startAt`,
+  `expireAt`, `numOfUsages`, `numOfUsagesPerUser`, `maxLimitValue`, `areas`.
+- **The switch asks first**: a MUI dialog (not a SweetAlert) — "Are You Sure ?
+  you want to deactivate this coupon", **No** / **Yes** — so nothing changes
+  until Yes. The click also fires `CouponAudits` for that coupon, the
+  Timeline's own query, which nothing on screen uses.
+- **Filters** (`CouponFilters`): `#code` (Coupon Code) and two react-selects,
+  **Ally Name** and **City**. Search sends `code` (partial: `free` finds 17),
+  `allyCompanyIds: ["155770"]` or `cityIds: ["1"]`; the URL keeps them as
+  JSON, with the city under the singular `cityId`. **Clear sends the
+  unfiltered query again** (as on cars) and empties the URL. Hegazy Cars has
+  no coupons at all (0 results); `khaled co` has 11.
+- **Details** (`/coupons/<id>`, "Coupon Details", from `CouponDetails { id }`
+  and `AllAgencies`): six `li.list_item_info` items — Coupon Code, No. of
+  total usage, No. of usage per user, Type, Start date, End date — then
+  **City, Ally and Agencies in the same list but as badges**
+  (`span.badge`, `CouponDetailsPage.chips`), reading `All` when the coupon is
+  not limited. Buttons: Edit, Back. A coupon with no `areas` is offered in
+  every city, so a city filter legitimately returns it.
+- **Statistics** (`/coupons/<id>/statistics`): `CouponStatistics { couponId }`
+  for the three counters (No. of total usages, No. of users, Coupon sales) and
+  `GetBookingsQuery { page: 1, limit: 50, couponId }` for the bookings that
+  used it — `#`, Booking ID, Customer, Pickup Time, Discount Value, Booking
+  Status. **A coupon nobody has used answers `couponStatistics: null`**, and
+  the page then shows three zeroes and "No records found!" — most coupons on
+  pre-prod are in that state. Coupon **50** is the one with a booking behind
+  it (1 usage, 1 user, 30 sales, booking QH21), so the specs check it.
+- **The coupon form** (`/coupons/add` "Create Coupon", `/coupons/<id>/edit`
+  "Edit Coupon", not covered by a spec yet): a Monthly checkbox
+  (`input[name="is_monthly"]`), `#code`, the react-selects Ally Name,
+  Agencies, Ally's branches, Car Version, City, **Type** (Percentage, Fixed
+  value, Free delivery, Free handover, Freedays), Payment Method (Cash /
+  Online) and paymentbrand (APPLE PAY, MADA, CREDIT CARD, Tamara, Tabby);
+  `input[name="start"]` / `input[name="enddate"]`, `#maxLimitValue`,
+  `#numOfUsages`, `#numOfUsagesPerUser`, `#minRentPrice`, a New Customers
+  checkbox, **Save** (disabled until the form is filled) and Cancel. Edit
+  loads `CouponDetails`, `CompaniesName { limit: 500 }`, `ActiveAgencies`,
+  `Branches`, `CarVersions` and `AllAreas`.
+  **`#discountValue` is not there until a Type is chosen** — only Percentage
+  and Fixed value have one — so the Type is picked first. The dates open the
+  customer form's MUI picker (year, month, day, **Ok**; `pickCalendarDate`).
+
+### Adding and editing a coupon (`coupon-lifecycle.spec.ts`, `@creates-coupon`)
+
+- **A coupon cannot be deleted** — no delete in the dashboard and none in the
+  API — so, like adding a partner, this spec is **kept out of ordinary runs**
+  and run on purpose: `RUN_CREATE_COUPON=1 npx playwright test --grep
+  @creates-coupon`. Every run creates one real coupon and **deactivates it at
+  the end**; `afterAll` deactivates it even when a step fails, so nothing the
+  suite made can ever be redeemed on a real booking. Serial, never retried.
+- **The data is generated per run** (`testData.coupons.newCoupon()`):
+  `auto-coupon-<7 digits>` (the time), Percentage 10%, running from today for
+  a week, one use in total and one per customer, no minimum rent — then the
+  edit raises it to 15% and two uses per customer. Coupons 585–588 were made
+  while writing this, all switched off.
+- **Save sends `CreateCoupons`** (plural) with the whole form —
+  `code`, `discountType: "percentage"`, `discountValue`, `startAt`
+  (`DD/MM/YYYYT00:00:00`) and `expireAt` (`…T23:59:00`), `numOfUsages`,
+  `numOfUsagesPerUser`, `minRentPrice`, `maxLimitValue`, `isMonthly`,
+  `forNewCustomers`, `paymentMethod: "ALL"`, `paymentBrands` and the empty
+  `allyCompanyIds` / `cityIds` / `branchIds` / `carVersionIds` /
+  `agencyIds` — and the page returns to the list at once. **Read the answer
+  through a route** (`CouponFormPage.save`): after that navigation the body
+  is gone ("No resource with given identifier found").
+- **An edit sends `UpdateCoupon`** with `couponId` and the same fields. **A
+  date nobody touched is left out** of the mutation (and must survive the
+  edit all the same); a date that is picked is sent and saved — moving the
+  end date on works and leaves the start date alone.
+- **The date pickers allow anything** (known issues below): both list
+  1900–2100 with **no day disabled**, on Create and on Edit, so a start date
+  in the past can be chosen — which the API cannot save — and an end date can
+  be put before the start (02-10 → 25-09) with Save still enabled.
+  `coupon-form.spec.ts` checks both without ever saving.
+- **A start date in the past breaks the save** (known issue below): the API
+  answers `Cannot return null for non-nullable field Mutation.updateCoupon`
+  (`DOWNSTREAM_SERVICE_ERROR` from `catalog_service`) with `data: null`, the
+  dashboard shows nothing at all, and **the whole edit is lost** — the other
+  fields with it. A start date further ahead saves normally, so it is the
+  past that breaks it.
+- **The switch's Yes sends `UpdateCoupon { couponId, isActive: false }`** and
+  toasts "Deactivated.successfully"; the row's switch is then off and the
+  API's row reads `isActive: false`. The list has no Status column, so that
+  is where a coupon's state is read.
+- **A coupon with nothing limiting it reads `All` as plain text**, not as a
+  badge — badges are only for real values (`Riyadh`, `Jeddah`), and an empty
+  row (Agencies) shows nothing at all.
 
 ## Printing (`BookingDetailsPage.print`)
 
@@ -602,11 +725,11 @@ npm run clean:cache                                       # drop the cached bund
 ### The refactored Add Booking (`/bookings/add2`, `add-booking-scenarios.spec.ts`)
 
 - **Every scenario books for real** for the test customer and is **closed
-  straight after** (afterEach), as agreed with the owner — 11 bookings a run:
-  daily with no extras / with extras / without Unlimited KM / with Full
-  insurance, delivery,
-  handover in another branch (another city), monthly, monthly in
-  installments, rent to own, a suggested daily price, online payment.
+  straight after** (afterEach), as agreed with the owner — 12 bookings a run:
+  daily with no extras / with extras / without Unlimited KM / with a coupon /
+  with Full insurance, delivery, handover in another branch (another city),
+  monthly, monthly in installments, rent to own, a suggested daily price,
+  online payment.
   Never retried. First runs: 21696–21703, 21707–21710; a full run on 22/09
   was 21748–21758. Checks that book
   nothing: Rent waits for insurance, 7 days at the weekly rate (88), an
@@ -690,6 +813,19 @@ npm run clean:cache                                       # drop the cached bund
   The rent-to-own scenario checks all of this (`aboutPrice`, which allows
   the double space in `Grand Total  + Vat`, and `rentalInstallments` —
   its rows are `tr`s outside any `tbody`).
+- **A coupon** is typed into "Discount Coupon" and applied
+  (`CarCouponAvailability { carId, couponCode }` → `status`). A coupon the
+  car accepts is followed by a `GetRentPrice` carrying `couponCode` and
+  `couponDiscount`, so `applyCoupon` waits for it; an unknown one only
+  answers "Invalid coupon" and never reprices. **The discount comes off the
+  rent alone** — what is added to it (extras, Unlimited KM, insurance) is
+  charged in full: `abdo_2001` (50%) turned 297 + 15 into 148.5 + 15, VAT
+  24.53, due 188.03. Rent then sends `couponId` (a number). **A coupon can be
+  valid and still discount nothing**: `shahry` only redeems over 2000 SAR, so
+  a three-day booking shows "To redeem the coupon, your rent must exceed 2000
+  SAR" (`couponErrorMessage`) with "Coupon Discount 0 SR" in the summary and
+  the price unchanged. Both are pinned in `testData.addBooking.coupons`,
+  chosen for having no ally, city, branch, car or new-customer limit.
 - **Delivery**: a Google map with "Enter a location" (Places autocomplete,
   `.pac-item`); the fee is by distance (10 from the centre, 20 to Kingdom
   Centre). Sends `deliverType: "one_way"`, `deliverLat/Lng`, `deliveryPrice`.
@@ -1116,10 +1252,23 @@ moment one starts passing — then drop the mark.
     once a booking is closed. Save is refused by the API — `EditBooking`
     answers "Invalid rental status for this action" (a red toast) and
     nothing changes (tried on 21735 with a note).
-- **Five cars filters do nothing.** Vehicle Type, City and KM Type send no
-  query when Search is pressed; Rent/Day is dropped from the query; Models
-  alone is sent but ignored (it only works with a Make). Marked `test.fail`
-  in the cars filters.
+- **Cars filters that do nothing.** Vehicle Type, City, KM Type and
+  Insurance Type's **Standard** and **No Insurance** send no query when
+  Search is pressed (only Full reaches the list, as `insuranceId: [2]`);
+  Rent/Day is dropped from the query; Models alone is sent but ignored (it
+  only works with a Make). Each marked `test.fail` in the cars filters.
+- **The "Active" availability filter is dropped from the query**, so the
+  list keeps its inactive cars: marboo7a + Active sent
+  `{ allyIds: ["155823"] }` with no `availabilityStatus` and answered 21
+  cars, **7 of them inactive** (17127, 17088, 16513, 16083, 16074…), eight
+  cells on screen reading "Inactive". Active (16,780) + Inactive (90) is
+  more than the whole list. Inactive itself works. Marked `test.fail`.
+- **The Full insurance filter returns cars that do not offer Full.** Of
+  Hegazy's 27 cars the filter answered 13: the 8 whose `carInsurances`
+  carry Full (17199, 17197, 17190, 17173, 17089, 17086, 17083, 17080) and
+  **5 that carry Standard alone** (17186, 17185, 17177, 17079, 17074). None
+  were missing, so the fault is in what the backend adds. Marked
+  `test.fail`.
 - **The cars list's Transmission column is always empty**, although every
   car has one (the API's `transmissionName`, and its details page).
   Marked `test.fail` in the cars list.
@@ -1128,6 +1277,25 @@ moment one starts passing — then drop the mark.
   refuses with `400 Boolean cannot represent a non boolean value`, and only
   then the right `isDeleted: true`. The results are correct, so only the
   network shows it. Marked `test.fail` in the branches filters.
+- **The coupon form offers dates it cannot save.** Its two pickers list
+  1900–2100 with nothing disabled, on Create Coupon and on Edit Coupon
+  alike: **a start date in the past can be picked** although the API refuses
+  it (below), and **an end date can be set before the start date** — the
+  form took 02-10-2026 → 25-09-2026 with Save enabled and no complaint, and
+  the end picker disables nothing once a start is chosen. The start date
+  should not be offered in the past at all (the owner, 22/09). Both marked
+  `test.fail` in `coupon-form.spec.ts`, which never saves.
+- **A coupon whose start date is moved into the past cannot be saved, and
+  nothing says so.** `UpdateCoupon` with `startAt` before today is answered
+  `{"data": null, "errors": [{"message": "Cannot return null for
+  non-nullable field Mutation.updateCoupon", "extensions": {"code":
+  "DOWNSTREAM_SERVICE_ERROR", "serviceName": "catalog_service"}}]}` — an
+  error, not a refusal with a reason — and the dashboard shows no toast and
+  no field error, so the form looks saved. **Everything else in that save is
+  lost too** (a new end date in the same save did not stick). Tried on the
+  suite's own coupon 588: start 22/09 → 21/09 failed, while 22/09 → 25/09
+  and an end date two months on both saved. Marked `test.fail` in the coupon
+  lifecycle.
 - **A refused partner save is silent.** Saving Edit Company with a manager
   name over 20 characters is rejected by the API, but the dashboard shows no
   toast and no field error — the form simply stays as it was. Marked

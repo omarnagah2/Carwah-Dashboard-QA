@@ -21,6 +21,10 @@ export interface RentPrice {
   totalAmountDue: number;
   addsPrice: number;
   totalExtraServicesPrice: number;
+  couponCode: string | null;
+  couponDiscount: number;
+  /** Why a valid coupon still discounts nothing (e.g. the rent is too small). */
+  couponErrorMessage: string | null;
   insuranceIncluded: boolean;
   insuranceValue: number;
   deliveryPrice: number;
@@ -214,12 +218,23 @@ export class AddBookingV2Page extends BasePage {
     await pickDate(this.page, field, current, date);
   }
 
-  /** Types a coupon and presses Apply; returns the message the page shows. */
+  /**
+   * Types a coupon and presses Apply; returns the message the page shows.
+   * A coupon the car accepts is followed by a `GetRentPrice` carrying the
+   * discount (or the reason there is none), so this waits for it — an
+   * unknown coupon never reprices, and then only the message arrives.
+   */
   async applyCoupon(code: string): Promise<Locator> {
     await this.byRole('textbox', { name: 'Discount Coupon' }).fill(code);
     const checked = this.page.waitForResponse((r) => isOperation(r, 'CarCouponAvailability'), { timeout: 30_000 });
+    const repriced = this.page.waitForResponse((r) => isOperation(r, 'GetRentPrice'), { timeout: 15_000 }).catch(() => null);
     await this.byRole('button', { name: 'Apply' }).click();
-    await checked;
+    const accepted = (await (await checked).json())?.data?.carCouponAvailability?.status === true;
+    if (accepted) {
+      await repriced;
+      // Let the page render the new summary before it is read.
+      await this.page.waitForTimeout(500);
+    }
     return this.page.getByText(/coupon/i).filter({ hasNotText: /^(Discount Coupon|Coupons)$/ });
   }
 

@@ -215,6 +215,35 @@ test.describe('add booking (new page): scenarios', () => {
     expect(rental).toMatchObject({ totalUnlimitedFee: 0, totalBookingPrice: price.totalPrice });
   });
 
+  test('a daily booking with a coupon', async ({ page }) => {
+    const { discount } = data.coupons;
+    await standardCar();
+    await form.chooseInsurance('Standard');
+    const before = form.price();
+
+    await form.applyCoupon(discount.code);
+
+    const price = form.price();
+    expectConsistent(price);
+    expect(price.couponCode).toBe(discount.code);
+    // The coupon takes its share of the rent; what is added to it (here
+    // Unlimited KM) is not discounted.
+    expect(price.couponDiscount).toBe(money((before.priceBeforeDiscount * discount.percentage) / 100));
+    expect(price.priceBeforeInsurance).toBe(money(before.priceBeforeDiscount - price.couponDiscount));
+    expect(price.addsPrice).toBe(before.addsPrice);
+    const summary = await form.summary();
+    expect(summary).toContain(`Coupon Code ${discount.code}`);
+    expect(summary).toContain(`Coupon Discount ${price.couponDiscount} SR`);
+
+    const { bookingId, sent } = await rent();
+
+    expect(sent).toMatchObject({ carId: data.standard.carId, couponId: discount.id });
+    const rental = await openCreated(page, bookingId);
+    expect(rental).toMatchObject({ totalBookingPrice: price.totalPrice });
+    const details = new BookingDetailsPage(page);
+    expect(Number(await details.detail('Grand Total'))).toBe(price.totalPrice);
+  });
+
   test('a daily booking with Full insurance', async ({ page }) => {
     await standardCar(data.fullInsurance);
     expect(await form.insuranceOptions()).toEqual(expect.arrayContaining(['Full', 'Standard']));
@@ -462,6 +491,23 @@ test.describe('add booking (new page): checks without booking', () => {
 
     await expect(message.first()).toHaveText('Invalid coupon');
     expect(form.price().totalPrice).toBe(before);
+  });
+
+  test('a coupon under its minimum rent discounts nothing', async () => {
+    const { belowMinimum } = data.coupons;
+    await form.chooseInsurance('Standard');
+    const before = form.price();
+
+    const message = await form.applyCoupon(belowMinimum.code);
+
+    // The coupon is valid for the car, so the page takes it — and then says
+    // the rent is too small (`couponErrorMessage`), leaving the price alone.
+    await expect(message.first()).toHaveText(`To redeem the coupon, your rent must exceed ${belowMinimum.minRentPrice} SAR`);
+    const price = form.price();
+    expect(price.couponCode).toBe(belowMinimum.code);
+    expect(price.couponDiscount).toBe(0);
+    expect(price.totalPrice).toBe(before.totalPrice);
+    expect(await form.summary()).toContain('Coupon Discount 0 SR');
   });
 });
 
