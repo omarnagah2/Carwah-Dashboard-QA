@@ -49,7 +49,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                branches (list), branch-filters, branch-details,
                cars (list), car-filters, car-details,
                extra-services (list), extra-service-details,
-               extra-service-form (add and edit)
+               extra-service-form (add and edit),
                coupons (list), coupon-filters, coupon-details,
                coupon-statistics, coupon-form (add and edit)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
