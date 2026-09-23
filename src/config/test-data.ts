@@ -182,6 +182,41 @@ export const testData = {
     knownBanner: { id: process.env.CARWAH_BANNER_ID ?? '163' },
   },
   /**
+   * The coupons specs are read-only. `knownCoupon` is a Free Delivery coupon
+   * limited to Riyadh and Jeddah, `allyCoupon` one of the eleven belonging to
+   * an ally (so the Ally Name filter has something to find), and `usedCoupon`
+   * the only coupon found with a booking behind it, which is what the
+   * Statistics page is checked against.
+   */
+  coupons: {
+    knownCoupon: { id: process.env.CARWAH_COUPON_ID ?? '582', code: 'freeship', type: 'Free Delivery', cities: ['Riyadh', 'Jeddah'] },
+    allyCoupon: { ally: 'khaled co', allyId: '155770', couponId: '584', code: 'free days khaled' },
+    usedCoupon: { id: '50', usages: 1, users: 1, sales: 30 },
+    city: 'Riyadh',
+    /**
+     * What the coupon lifecycle creates: a percentage coupon of its own,
+     * named after the time so runs never collide, running for a week from
+     * today and limited to one use — it is deactivated at the end of the run
+     * anyway. A coupon cannot be deleted, so the spec is kept out of
+     * ordinary runs (@creates-coupon).
+     */
+    newCoupon() {
+      const stamp = String(Date.now()).slice(-7);
+      const today = new Date();
+      return {
+        code: `auto-coupon-${stamp}`,
+        type: 'Percentage' as const,
+        discountValue: 10,
+        startDate: today,
+        endDate: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7),
+        numOfUsages: 1,
+        numOfUsagesPerUser: 1,
+        minRentPrice: 0,
+        edited: { discountValue: 15, numOfUsagesPerUser: 2 },
+      };
+    },
+  },
+  /**
    * The Add Booking scenarios on the refactored page (/bookings/add2). Each
    * books for the bookings' test customer and is closed at once. Handover
    * uses Al-nagah and Rent To Own uses Asmak in Umluj, as agreed with the
@@ -192,6 +227,17 @@ export const testData = {
     standard: { city: 'Riyadh', ally: 'Hegazy Cars', branch: 'Hegazy Riyadh', car: 'Suzuki - Dzire', dailyPrice: 99, carId: '17180' },
     /** A Hegazy Riyadh car that offers Full insurance (and Standard). */
     fullInsurance: { city: 'Riyadh', ally: 'Hegazy Cars', branch: 'Hegazy Riyadh', car: 'Proton - Gen 2', dailyPrice: 100, carId: '17190' },
+    /**
+     * Coupons for the booking scenarios, chosen out of the 92 running today
+     * for having no ally, city, branch, car or new-customer limit:
+     * `discount` takes half the rent and allows 1000 uses per customer, so
+     * runs never exhaust it; `belowMinimum` only redeems over 2000 SAR, which
+     * a three-day 99/day booking never reaches.
+     */
+    coupons: {
+      discount: { id: 564, code: 'abdo_2001', percentage: 50 },
+      belowMinimum: { code: 'shahry', minRentPrice: 2000 },
+    },
     /** One service charged once per rental and one per day. */
     extraServices: [
       { name: 'GPS', price: 5, per: 'Rent' },
