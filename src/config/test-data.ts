@@ -183,6 +183,13 @@ export const testData = {
     knownService: { id: process.env.CARWAH_EXTRA_SERVICE_ID ?? '144', title: 'GPS', payType: 'one_time' },
   },
   /**
+   * The banners specs are read-only. 163 is the newest banner today: active,
+   * a deep link to rent-to-own cars, with both images set.
+   */
+  banners: {
+    knownBanner: { id: process.env.CARWAH_BANNER_ID ?? '163' },
+  },
+  /**
    * The coupons specs are read-only. `knownCoupon` is a Free Delivery coupon
    * limited to Riyadh and Jeddah, `allyCoupon` one of the eleven belonging to
    * an ally (so the Ally Name filter has something to find), and `usedCoupon`
