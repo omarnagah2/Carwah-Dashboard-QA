@@ -24,6 +24,7 @@ tests/
 │                   customer-lifecycle (writes: adds one customer per run,
 │                   edits it, deletes it at the end)
 ├── branches/       branches-list, branches-filters (read-only)
+├── banners/        banners-list, banner-form (read-only)
 ├── cars/           cars-list, cars-filters (read-only)
 ├── coupons/        coupons-list, coupons-filters, coupon-form (read-only),
 │                   coupon-lifecycle (tagged @creates-coupon: left out of
@@ -47,6 +48,7 @@ src/pages/     page objects (BasePage copied from Carwah UI), signin,
                company-form (shared by add-company and edit), add-company,
                branches (list), branch-filters, branch-details,
                cars (list), car-filters, car-details,
+               banners (list), banner-form (add and edit),
                coupons (list), coupon-filters, coupon-details,
                coupon-statistics, coupon-form (add and edit)
 src/fixtures/  test.ts — the `test` every spec imports (static cache + API pacing)
@@ -494,6 +496,47 @@ npm run clean:cache                                       # drop the cached bund
 - **Fleet Management** opens `/cars/fleet-management`: Ally and Branches
   autocompletes and Cancel; not explored further.
 
+## Banners (/cw/dashboard/banners)
+
+- **Read-only.** Banners are what the customer app shows on its home screen,
+  so no spec saves one and **the delete question is only ever cancelled**;
+  every spec proves it with `recordMutations`. The one place `save` is
+  pressed is an Add form with no images, which the page refuses and never
+  sends.
+- **The list shows every banner** (33 today) via `AllBanners { page, limit }`
+  — **answered under `banners`**, not `allBanners`. The table is found by its
+  `Sort Order` header. Columns: `#`, ID, Sort Order, Arabic Image, English
+  Image (the images themselves, `imgAr` then `imgEn`), Status, Created At
+  (`July 26, 2026 11:59 AM`), Actions. Page sizes 10 / 20 / 40 / 80 / 100,
+  paging in the URL (`#page=2`). There is **no filter panel and no details
+  page** — a banner is only ever opened for editing.
+- Actions: **Edit** (`/banners/<id>/edit`), **delete** (a SweetAlert, "Are
+  You Sure ? You Want To Delete This Banner", Cancel / delete — closed the
+  branches way, by the overlay losing `swal-overlay--show-modal`),
+  **Timeline** (`BannerAuditsQuery { id }`, "Banner TimeLine", `ID :<id>`)
+  and **Copy banner link** (broken, below).
+- **The form** (`/banners/add` "Add Banner", `/banners/<id>/edit` "Edit
+  Banner", from `Banner { id }`): a **DeepLink** checkbox, `#sortorder`, a
+  Status react-select (Active / Inactive) and the two images. **Ticking
+  DeepLink opens the targeting fields** — City, Ally Name, Ally's branches,
+  Car Version, Car Type, Extra Service and a service select, with Daily
+  price From / To — which say which cars the banner leads to. Those two
+  price fields have no placeholder and **their label is spelled `Daily price
+  From` in the markup** while the screen capitalises it, so they are matched
+  case-insensitively (MUI repeats the label in the outline's legend, so the
+  match is loose, not anchored).
+- **Save is spelled `save`** (lower case, as on the car form). On Edit it is
+  disabled until something changes; on Add it is enabled early and the
+  images are checked when it is pressed — both then read "this field is
+  required" and nothing is sent. **Cancel goes back in history**, as on the
+  car form: opened from the list it returns there, opened by URL it lands on
+  `about:blank`, so the spec reaches the form through the list.
+- Save sends `CreateBanner` or **`UpdateBanner`** — `id` (a number),
+  `displayOrder`, `imgAr` / `imgEn` as the URLs they were loaded with,
+  `isActive`, `isDeepLink`, `service`, `dailyPriceFrom` / `dailyPriceTo` and
+  the five id arrays (`areaIds`, `allyCompanyIds`, `branchIds`,
+  `carVersionIds`, `vehicleTypeIds`, `extraServiceIds`). Neither is ever
+  sent by the suite.
 ## Coupons (/cw/dashboard/coupons)
 
 - **Read-only.** Coupons belong to real allies and price real bookings, so no
@@ -1201,6 +1244,14 @@ moment one starts passing — then drop the mark.
     once a booking is closed. Save is refused by the API — `EditBooking`
     answers "Invalid rental status for this action" (a red toast) and
     nothing changes (tried on 21735 with a note).
+- **"Copy banner link" copies nothing and says nothing.** The button calls
+  `navigator.clipboard.writeText`, but **the dashboard is served over HTTP**,
+  where the Clipboard API does not exist, so the click throws
+  `TypeError: Cannot read properties of undefined (reading 'writeText')` —
+  no toast, no error on screen, nothing on the clipboard. Marked `test.fail`
+  in the banners list (the spec watches `pageerror`). It would work on an
+  HTTPS host, so the fix is either a fallback (`document.execCommand`) or
+  serving the dashboard over HTTPS.
 - **Cars filters that do nothing.** Vehicle Type, City, KM Type and
   Insurance Type's **Standard** and **No Insurance** send no query when
   Search is pressed (only Full reaches the list, as `insuranceId: [2]`);
